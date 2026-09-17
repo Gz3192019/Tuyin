@@ -8,7 +8,7 @@ abstract: >-
   proportional rescaling, and is recovered blindly without the original cover.
 type: software
 license: GPL-3.0-or-later
-repository-code: "https://github.com/OWNER/rac-hide"
+repository-code: "https://github.com/tuoPzf/rac-hide"
 keywords:
   - steganography
   - information hiding
