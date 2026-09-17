@@ -4,7 +4,7 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)
-![Tests: 10 passing](https://img.shields.io/badge/tests-10%20passing-brightgreen.svg)
+[![CI](https://github.com/tuoPzf/rac-hide/actions/workflows/ci.yml/badge.svg)](https://github.com/tuoPzf/rac-hide/actions/workflows/ci.yml)
 
 RAC-Hide is a dependency-free JavaScript implementation of *robust* image
 steganography. A secret image is compressed to JPEG and embedded into the
