@@ -5,6 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Dependencies: none](https://img.shields.io/badge/dependencies-none-brightgreen.svg)
 [![CI](https://github.com/tuoPzf/rac-hide/actions/workflows/ci.yml/badge.svg)](https://github.com/tuoPzf/rac-hide/actions/workflows/ci.yml)
+[![Demo](https://img.shields.io/badge/demo-live-brightgreen.svg)](https://tuoPzf.github.io/rac-hide/)
 
 RAC-Hide is a dependency-free JavaScript implementation of *robust* image
 steganography. A secret image is compressed to JPEG and embedded into the
@@ -101,7 +102,10 @@ const recovered = await extractImage(await decodeImageFile(blob));
 
 ### Run the demo
 
-The demo uses ES modules, so it must be served over HTTP:
+A hosted copy runs on GitHub Pages: **https://tuoPzf.github.io/rac-hide/**
+
+To run it locally, serve the repository over HTTP (ES modules do not load
+from `file://`):
 
 ```bash
 python3 -m http.server 8000
