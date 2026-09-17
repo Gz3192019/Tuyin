@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>RAC-Hide — robust image steganography</title>
 <meta name="description" content="Hide a secret image inside another so it survives JPEG re-compression and proportional rescaling. Runs entirely in your browser.">
 <meta name="color-scheme" content="dark">
@@ -27,9 +27,9 @@
     <p class="eyebrow">Robust DCT steganography</p>
     <h1>Hide one image inside another.</h1>
     <p class="lead">
-      RAC-Hide embeds a secret image into the relationships between DCT coefficients
-      of a cover image, so it survives JPEG/WebP re-compression and proportional
-      rescaling. Everything runs locally in your browser — no uploads, no server.
+      Embed a secret image into the DCT coefficients of a cover image so it survives
+      JPEG/WebP re-compression and proportional rescaling. Everything runs locally
+      in your browser — no uploads, no server.
     </p>
     <ul class="badges">
       <li>Zero dependencies</li>
@@ -40,43 +40,101 @@
   </section>
 
   <div class="tabs" role="tablist" aria-label="Mode">
-    <button class="tab active" data-tab="embed" role="tab">Embed</button>
-    <button class="tab" data-tab="extract" role="tab">Extract</button>
+    <button class="tab active" id="tabEmbed" data-tab="embed" role="tab">Embed</button>
+    <button class="tab" id="tabExtract" data-tab="extract" role="tab">Extract</button>
   </div>
 
+  <!-- ===================== EMBED ===================== -->
   <section id="embed" class="panel" role="tabpanel">
-    <div class="grid two">
+    <div class="upload-grid">
       <label class="drop" for="coverInput">
         <input type="file" id="coverInput" accept="image/*">
         <span class="drop-icon" aria-hidden="true">🖼️</span>
         <span class="drop-title">Cover image</span>
-        <span class="drop-hint" id="coverHint">Click to choose, or drop a file</span>
+        <span class="drop-hint" id="coverHint">Click to choose, or drop a file. Recommended ≥ 512×512.</span>
       </label>
       <label class="drop" for="secretInput">
         <input type="file" id="secretInput" accept="image/*">
         <span class="drop-icon" aria-hidden="true">🔒</span>
         <span class="drop-title">Secret image</span>
-        <span class="drop-hint" id="secretHint">Hidden inside the cover</span>
+        <span class="drop-hint" id="secretHint">Hidden inside the cover.</span>
       </label>
     </div>
 
-    <div class="controls">
-      <label class="field">
-        <span>Operating point</span>
-        <select id="preset">
-          <option value="capacity">Capacity — larger, clearer secret</option>
-          <option value="balanced" selected>Balanced — recommended</option>
-          <option value="robust">Robust — survives heavy compression</option>
-        </select>
-      </label>
-      <span class="params" id="paramInfo"></span>
+    <div class="row">
+      <span class="row-label">Capacity</span>
+      <span class="row-value" id="capacityInfo">—</span>
+    </div>
+
+    <div class="row">
+      <span class="row-label">Cover enhance</span>
+      <select id="coverUpscale" class="grow">
+        <option value="0">Do not upscale</option>
+        <option value="2048">Long edge 2048</option>
+        <option value="2560">Long edge 2560</option>
+        <option value="3072">Long edge 3072</option>
+        <option value="4096">Long edge 4096</option>
+        <option value="custom">Custom</option>
+      </select>
+      <input type="number" id="coverCustomLong" class="grow" min="64" max="8192" step="8" placeholder="custom long edge" inputmode="numeric">
+    </div>
+
+    <div class="tier" id="racTierBar">
+      <div class="tier-wrap" id="tierSliderWrap">
+        <div class="tier-labels"><span>High quality</span><span>Anti-compression</span></div>
+        <input type="range" class="tier-slider" id="tierSlider" min="0" max="100" value="50" aria-label="Operating point">
+      </div>
+      <div class="tier-info">
+        <span class="tier-name" id="tierName">Balanced</span>
+        <span class="tier-desc" id="tierDesc">Visual subtlety and compression resistance</span>
+        <button class="link-btn" id="customBtn" type="button">Custom parameters</button>
+      </div>
+      <div class="custom-panel" id="racCustomPanel">
+        <div class="param-row">
+          <span class="param-label">Pairs / block</span>
+          <input type="range" id="paramPPB" min="1" max="12" value="2">
+          <span class="param-val" id="paramPPB_v">2</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Repeat</span>
+          <input type="range" id="paramRepeat" min="1" max="5" value="1">
+          <span class="param-val" id="paramRepeat_v">1</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">ECC strength</span>
+          <input type="range" id="paramNsym" min="8" max="64" step="8" value="48">
+          <span class="param-val" id="paramNsym_v">48</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Min margin</span>
+          <input type="range" id="paramMarginMin" min="5" max="100" value="40">
+          <span class="param-val" id="paramMarginMin_v">40</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Margin gain</span>
+          <input type="range" id="paramMarginGain" min="5" max="30" value="14">
+          <span class="param-val" id="paramMarginGain_v">1.4</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Max margin</span>
+          <input type="range" id="paramMarginMax" min="50" max="255" value="200">
+          <span class="param-val" id="paramMarginMax_v">200</span>
+        </div>
+        <div class="param-row">
+          <span class="param-label">Secret long edge</span>
+          <input type="range" id="paramSecretMax" min="64" max="4096" step="64" value="1280">
+          <span class="param-val" id="paramSecretMax_v">1280</span>
+        </div>
+      </div>
     </div>
 
     <div class="actions">
       <button class="btn primary" id="embedBtn" disabled>Embed</button>
-      <a class="btn ghost" id="downloadStego" hidden download="stego.png">Download stego (PNG)</a>
+      <button class="btn ghost" id="downloadStegoBtn" disabled>Download stego</button>
+      <button class="btn ghost" id="resetEmbedBtn" type="button">Reset</button>
     </div>
     <p class="status" id="embedStatus"></p>
+    <div class="progress" id="embedProgress"><div class="progress-bar"></div></div>
 
     <div class="previews three">
       <figure class="card">
@@ -97,27 +155,32 @@
     </div>
   </section>
 
+  <!-- ===================== EXTRACT ===================== -->
   <section id="extract" class="panel hidden" role="tabpanel">
     <label class="drop wide" for="stegoInput">
       <input type="file" id="stegoInput" accept="image/*">
       <span class="drop-icon" aria-hidden="true">🔍</span>
       <span class="drop-title">Stego image</span>
-      <span class="drop-hint" id="stegoHint">The image produced by the embed step</span>
+      <span class="drop-hint" id="stegoHint">The image produced by the embed step.</span>
     </label>
 
-    <div class="controls">
-      <span class="field-label">Original size (optional)</span>
-      <input type="number" id="manualW" min="16" max="8192" placeholder="width" aria-label="Original width">
-      <span class="times">×</span>
-      <input type="number" id="manualH" min="16" max="8192" placeholder="height" aria-label="Original height">
-      <span class="params">used only if the spatial ruler cannot be read</span>
+    <div class="manual-box">
+      <span class="manual-label">Original size (optional)</span>
+      <div class="manual-inputs">
+        <input type="number" id="manualW" min="16" max="8192" placeholder="width" inputmode="numeric">
+        <span>×</span>
+        <input type="number" id="manualH" min="16" max="8192" placeholder="height" inputmode="numeric">
+      </div>
+      <p class="manual-hint">Used only if the spatial ruler cannot be read automatically.</p>
     </div>
 
     <div class="actions">
       <button class="btn primary" id="extractBtn" disabled>Extract</button>
-      <a class="btn ghost" id="downloadSecret" hidden download="secret.png">Download secret (PNG)</a>
+      <button class="btn ghost" id="downloadSecretBtn" disabled>Download secret</button>
+      <button class="btn ghost" id="resetExtractBtn" type="button">Reset</button>
     </div>
     <p class="status" id="extractStatus"></p>
+    <div class="progress" id="extractProgress"><div class="progress-bar"></div></div>
 
     <div class="previews two">
       <figure class="card">
@@ -128,7 +191,7 @@
       <figure class="card">
         <figcaption>Recovered secret</figcaption>
         <div class="canvas-wrap"><canvas id="extractedCanvas"></canvas></div>
-        <p class="meta" id="extractedMeta"></p>
+        <p class="meta" id="extractMeta"></p>
       </figure>
     </div>
   </section>
