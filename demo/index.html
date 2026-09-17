@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAC-Hide — browser demo</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>RAC-Hide</h1>
+  <p class="tagline">Robust DCT-domain image steganography — everything runs locally in your browser.</p>
+</header>
+
+<main>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="embed" role="tab">Embed</button>
+    <button class="tab" data-tab="extract" role="tab">Extract</button>
+  </div>
+
+  <section id="embed" class="panel">
+    <div class="grid">
+      <label class="drop">
+        <input type="file" id="coverInput" accept="image/*">
+        <span class="drop-title">Cover image</span>
+        <span class="drop-hint" id="coverHint">Click to choose, or drop a file</span>
+      </label>
+      <label class="drop">
+        <input type="file" id="secretInput" accept="image/*">
+        <span class="drop-title">Secret image</span>
+        <span class="drop-hint" id="secretHint">Hidden inside the cover</span>
+      </label>
+    </div>
+
+    <div class="controls">
+      <label for="preset">Operating point</label>
+      <select id="preset">
+        <option value="capacity">Capacity — larger, clearer secret, weaker robustness</option>
+        <option value="balanced" selected>Balanced — recommended default</option>
+        <option value="robust">Robust — survives heavy compression / rescaling</option>
+      </select>
+      <span class="params" id="paramInfo"></span>
+    </div>
+
+    <button class="primary" id="embedBtn" disabled>Embed</button>
+    <p class="status" id="embedStatus"></p>
+
+    <div class="previews">
+      <figure><canvas id="coverCanvas"></canvas><figcaption id="coverMeta"></figcaption></figure>
+      <figure><canvas id="secretCanvas"></canvas><figcaption id="secretMeta"></figcaption></figure>
+      <figure><canvas id="stegoCanvas"></canvas><figcaption id="stegoMeta"></figcaption></figure>
+    </div>
+    <a class="download" id="downloadStego" hidden download="stego.png">Download stego image (PNG)</a>
+  </section>
+
+  <section id="extract" class="panel hidden">
+    <label class="drop wide">
+      <input type="file" id="stegoInput" accept="image/*">
+      <span class="drop-title">Stego image</span>
+      <span class="drop-hint" id="stegoHint">The image produced by the embed step</span>
+    </label>
+
+    <div class="controls">
+      <label for="manualW">Original size (optional)</label>
+      <input type="number" id="manualW" min="16" max="8192" placeholder="width">
+      <span class="times">&times;</span>
+      <input type="number" id="manualH" min="16" max="8192" placeholder="height">
+      <span class="params">used only if the spatial ruler cannot be read</span>
+    </div>
+
+    <button class="primary" id="extractBtn" disabled>Extract</button>
+    <p class="status" id="extractStatus"></p>
+
+    <div class="previews">
+      <figure><canvas id="extractStegoCanvas"></canvas><figcaption id="extractStegoMeta"></figcaption></figure>
+      <figure><canvas id="extractedCanvas"></canvas><figcaption id="extractedMeta"></figcaption></figure>
+    </div>
+    <a class="download" id="downloadSecret" hidden download="secret.png">Download recovered secret (PNG)</a>
+  </section>
+</main>
+
+<footer>
+  <p>GPL-3.0-or-later · for research, copyright protection and lawful covert communication.</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use RAC-Hide in academic work, please cite it as below."
+title: "RAC-Hide: robust DCT-domain image steganography"
+abstract: >-
+  A dependency-free implementation of robust image steganography that embeds a
+  JPEG secret into the relationships between low-frequency DCT coefficients of a
+  cover image. The payload survives lossy JPEG/WebP re-compression and
+  proportional rescaling, and is recovered blindly without the original cover.
+type: software
+license: GPL-3.0-or-later
+repository-code: "https://github.com/OWNER/rac-hide"
+keywords:
+  - steganography
+  - information hiding
+  - digital watermarking
+  - discrete cosine transform
+  - Reed-Solomon
+  - robust coding
+authors:
+  - name: "RAC-Hide contributors"
+version: 1.0.0
+date-released: "2026-09-17"

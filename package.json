@@ -1,0 +1,35 @@
+{
+  "name": "rac-hide",
+  "version": "1.0.0",
+  "description": "Robust DCT-domain image steganography that survives JPEG re-compression and proportional rescaling, running entirely in the browser.",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./core": "./src/core.js",
+    "./browser": "./src/browser.js"
+  },
+  "files": [
+    "src",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "steganography",
+    "watermarking",
+    "dct",
+    "jpeg",
+    "reed-solomon",
+    "information-hiding",
+    "image-processing",
+    "robust"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
