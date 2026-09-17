@@ -23,6 +23,20 @@ Everything runs locally: the library never uploads an image anywhere.
 
 ---
 
+## Live demo
+
+Try the full tool in your browser — nothing to install:
+
+**https://tuoPzf.github.io/rac-hide/demo/**
+
+[![RAC-Hide browser demo](docs/demo.jpg)](https://tuoPzf.github.io/rac-hide/demo/)
+
+The demo exposes every knob: capacity read-out, cover enhancement, the
+quality ↔ anti-compression slider, custom embedding parameters, progress
+feedback and previews. All computation stays on your device.
+
+---
+
 ## Why coefficient *relationships*?
 
 JPEG quantises every DCT coefficient independently, so absolute coefficient
@@ -100,12 +114,11 @@ const blob = await imageDataToBlob(stego, 'image/png');
 const recovered = await extractImage(await decodeImageFile(blob));
 ```
 
-### Run the demo
+### Run the demo locally
 
-A hosted copy runs on GitHub Pages: **https://tuoPzf.github.io/rac-hide/**
-
-To run it locally, serve the repository over HTTP (ES modules do not load
-from `file://`):
+The hosted demo is at **https://tuoPzf.github.io/rac-hide/demo/** (the site root
+redirects there). To run it from a checkout, serve the repository over HTTP
+(ES modules do not load from `file://`):
 
 ```bash
 python3 -m http.server 8000
