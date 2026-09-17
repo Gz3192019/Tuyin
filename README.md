@@ -196,6 +196,12 @@ several operating points.
 If you use RAC-Hide in academic work, please cite it via
 [`CITATION.cff`](CITATION.cff).
 
+## Contributing
+
+Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) and
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) first, and report security issues
+privately as described in [`SECURITY.md`](SECURITY.md).
+
 ## License
 
 [GNU General Public License v3.0 or later](LICENSE).
