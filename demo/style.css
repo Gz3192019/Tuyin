@@ -449,7 +449,8 @@ select:focus, input[type="number"]:focus {
 @media (max-width: 460px) {
   .previews.three,
   .previews.two { grid-template-columns: 1fr; }
-  .site-nav { gap: 14px; }
+  .site-nav { gap: 12px; }
+  .site-nav a { font-size: 13px; }
   .tier-info { gap: 2px 10px; }
   .link-btn { margin-left: 0; }
 }
