@@ -1,0 +1,17 @@
+{
+  "name": "RAC-Hide Studio · 图像隐写工作台",
+  "short_name": "RAC-Hide",
+  "description": "把秘密图藏进封面图，抗 JPEG 重压缩与等比缩放；全程本地运行，不上传任何图片。",
+  "lang": "zh-CN",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0c11",
+  "theme_color": "#0a0c11",
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
