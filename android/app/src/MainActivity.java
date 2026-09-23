@@ -31,7 +31,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.Base64;
 
-/** 图隐 — MIUI X 风格主界面：大标题 + 标语 + 圆形「关于」入口 + 底部导航 + 圆角卡片工作台。 */
+/** 图隐 — MIUI X 风格主界面：大标题 + 标语 + 圆角方形「关于」入口 + 圆角卡片工作台 + 底部悬浮导航。 */
 public class MainActivity extends Activity {
 
     private static final int REQ_PICK_IMAGE = 1001;
@@ -54,19 +54,19 @@ public class MainActivity extends Activity {
         int text = getColor(R.color.tuyin_text);
         int sub = getColor(R.color.tuyin_sub);
 
-        LinearLayout root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
+        FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(bg);
 
-        // ---- 顶部：标题「图隐」+ 标语 + 圆形「关于」入口 ----
+        // ---- 顶部：标题「图隐」+ 标语 + 圆角方形「关于」入口 ----
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        FrameLayout.LayoutParams hp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        hp.gravity = android.view.Gravity.TOP;
         hp.setMargins(dp(24), dp(20), dp(24), dp(14));
         header.setLayoutParams(hp);
 
-        // 标题行：左「图隐」，右圆形关于按钮
+        // 标题行：左「图隐」，右关于按钮
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setOrientation(LinearLayout.HORIZONTAL);
         titleRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
@@ -78,19 +78,21 @@ public class MainActivity extends Activity {
         title.setTextColor(text);
         title.setLayoutParams(new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1));
 
-        // 圆形「关于」入口（MIUI X 圆形描边图标按钮）
+        // 圆角方形「关于」入口（白底 + 蓝色文字 + 细描边）
         TextView about = new TextView(this);
-        about.setText("i");
-        about.setTextSize(17);
+        about.setText(getString(R.string.about_title));
+        about.setTextSize(13);
         about.setTypeface(Typeface.DEFAULT_BOLD);
         about.setTextColor(primary);
         about.setGravity(android.view.Gravity.CENTER);
+        about.setPadding(dp(14), 0, dp(14), 0);
         GradientDrawable aboutBg = new GradientDrawable();
-        aboutBg.setShape(GradientDrawable.OVAL);
+        aboutBg.setShape(GradientDrawable.RECTANGLE);
+        aboutBg.setCornerRadius(dp(14));
         aboutBg.setColor(card);
         aboutBg.setStroke(dp(1.5f), primary);
         about.setBackground(aboutBg);
-        LinearLayout.LayoutParams aboutLp = new LinearLayout.LayoutParams(dp(40), dp(40));
+        LinearLayout.LayoutParams aboutLp = new LinearLayout.LayoutParams(dp(72), dp(36));
         about.setLayoutParams(aboutLp);
         about.setOnClickListener(v -> startActivity(new Intent(MainActivity.this, AboutActivity.class)));
         titleRow.addView(title);
@@ -113,9 +115,10 @@ public class MainActivity extends Activity {
         cardBg.setColor(card);
         cardBg.setCornerRadius(dp(20));
         cardBox.setBackground(cardBg);
-        LinearLayout.LayoutParams cp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1);
-        cp.setMargins(dp(12), 0, dp(12), dp(12));
+        FrameLayout.LayoutParams cp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT);
+        cp.gravity = android.view.Gravity.FILL;
+        cp.setMargins(dp(12), 0, dp(12), 0);
         cardBox.setLayoutParams(cp);
         cardBox.setPadding(dp(6), dp(6), dp(6), dp(6));
 
@@ -161,25 +164,27 @@ public class MainActivity extends Activity {
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         root.addView(cardBox);
 
-        // ---- 底部导航：嵌入 / 提取（MIUI X 底部标签）----
+        // ---- 底部悬浮导航：嵌入 / 提取（MIUI X 悬浮胶囊）----
         LinearLayout seg = new LinearLayout(this);
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setGravity(android.view.Gravity.CENTER);
         GradientDrawable segBg = new GradientDrawable();
         segBg.setColor(getColor(R.color.tuyin_seg_bg));
-        segBg.setCornerRadius(dp(24));
+        segBg.setCornerRadius(dp(28));
         seg.setBackground(segBg);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
-        sp.setMargins(dp(24), dp(10), dp(24), dp(14));
+        FrameLayout.LayoutParams sp = new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT, dp(56));
+        sp.gravity = android.view.Gravity.BOTTOM | android.view.Gravity.CENTER_HORIZONTAL;
+        sp.setMargins(0, 0, 0, dp(22));
         seg.setLayoutParams(sp);
+        seg.setElevation(dp(10));
 
         segEmbed = makeSegItem(getString(R.string.tab_embed));
         segExtract = makeSegItem(getString(R.string.tab_extract));
         segEmbed.setOnClickListener(v -> switchTab(0));
         segExtract.setOnClickListener(v -> switchTab(1));
-        seg.addView(segEmbed, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
-        seg.addView(segExtract, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        seg.addView(segEmbed, new LinearLayout.LayoutParams(dp(140), LinearLayout.LayoutParams.MATCH_PARENT));
+        seg.addView(segExtract, new LinearLayout.LayoutParams(dp(140), LinearLayout.LayoutParams.MATCH_PARENT));
         root.addView(seg);
 
         setContentView(root);
@@ -248,6 +253,11 @@ public class MainActivity extends Activity {
      * 保存到相册
      * ------------------------------------------------------------------ */
     private class TuyinBridge {
+        @JavascriptInterface
+        public void showToast(String msg) {
+            runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
+        }
+
         @JavascriptInterface
         public void savePng(String dataUrl, String filename) {
             runOnUiThread(() -> {
