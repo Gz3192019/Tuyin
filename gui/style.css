@@ -8,7 +8,7 @@
   --muted: #9aa4ba;
   --faint: #69728a;
   --accent: #5b8cff;
-  --accent-2: #a855f7;
+  --accent-2: #3d8bff;
   --ok: #34d399;
   --err: #fb7185;
   --warn: #ff9500;
@@ -100,7 +100,7 @@ main,
   font-size: 16px;
   font-weight: 800;
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   box-shadow: 0 10px 24px -12px rgba(91, 140, 255, 0.9);
 }
 .brand-name { font-size: 17px; }
@@ -177,7 +177,7 @@ main,
 .tab:hover { color: var(--text); }
 .tab.active {
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   box-shadow: 0 10px 24px -12px rgba(91, 140, 255, 0.95);
 }
 
@@ -234,7 +234,7 @@ main,
   height: 100%;
   width: 0;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   transition: width 0.35s ease;
 }
 .meter-fill.hot { background: linear-gradient(90deg, var(--warn), var(--err)); }
@@ -381,7 +381,7 @@ select:focus, input[type="number"]:focus {
 }
 .btn.primary {
   color: #fff;
-  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   box-shadow: 0 16px 34px -16px rgba(91, 140, 255, 0.95);
 }
 .btn.primary:hover { transform: translateY(-1px); }
@@ -408,7 +408,7 @@ select:focus, input[type="number"]:focus {
   height: 100%;
   width: 30%;
   border-radius: 999px;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  background: var(--accent);
   animation: slide 1.1s ease-in-out infinite;
 }
 @keyframes slide {
