@@ -35,6 +35,33 @@ The demo exposes every knob: capacity read-out, cover enhancement, the
 quality ↔ anti-compression slider, custom embedding parameters, progress
 feedback and previews. All computation stays on your device.
 
+## GUI workbench (`gui/`)
+
+A self-contained interactive workbench with drag-and-drop upload, capacity
+meter, cover enhancement, three operating points plus fully custom parameters,
+a channel simulator (scale + re-compress + re-extract) and a how-it-works
+section. It supports **light / dark mode** (follows the system, or toggle
+manually) and an **in-place extract verification** button after embedding.
+
+- Local run: `python3 -m http.server 8000` then open
+  `http://localhost:8000/gui/` (ES modules need HTTP, not `file://`).
+- **Install as an app on Android** (PWA): open the hosted version in Chrome,
+  then use menu → "Add to Home screen" / "Install app":
+
+  **https://4m44fw7fpsrp5.doubaoapps.com/app/app_17eq0z7tkjm**
+
+  The hosted app is fully self-contained and works offline after first load.
+
+## Android app — 图隐 (`android/`)
+
+A standalone Android app wrapping the workbench in a native MIUI X-style shell:
+native title bar, segmented 嵌入/提取 tabs and a rounded-card WebView workbench,
+plus a native 关于 (About) page carrying the app name **图隐** and version.
+No permissions, fully offline.
+
+- Prebuilt APK: `Tuyin-1.0.apk` (repo root, ~70 KB, self-signed v2+v3).
+- Build from source and install steps: see [`android/README.md`](android/README.md).
+
 ---
 
 ## Why coefficient *relationships*?
