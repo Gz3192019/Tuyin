@@ -12,6 +12,7 @@ import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
@@ -20,6 +21,8 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -30,26 +33,24 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 /**
- * 图隐 — WebView 壳工作台（回退方案）。
- * 顶部标题栏：图隐 + 圆角方形蓝色「关于」按钮；内容区：WebView 加载打包的
- * RAC-Hide 工作台（瓷白底透出、隐藏网页头部）；底部悬浮导航：嵌入/提取联动
- * 网页 tab。保存图片由 TuyinBridge 原生接管（MediaStore 存相册，明确反馈）。
+ * 图隐 — WebView 壳工作台。
+ * 顶部：沉浸渐变标题栏（由上到下由实渐透，浮动在内容上方），左「图隐」+ slogan，
+ * 右上角圆角方形蓝色「关于」按钮；内容区：WebView 加载打包的 RAC-Hide 工作台
+ * （瓷白底透出、隐藏网页头部，顶部预留 96dp 给渐变标题栏）；
+ * 底部：悬浮图标导航（去文字、60% 透明胶囊），联动网页 tab。
+ * 上传图片走 WebChromeClient 系统选图器（免存储权限）；保存图片由
+ * TuyinBridge 原生接管（API 29+ MediaStore 免权限 / 更低版本请求写入权限）。
  */
 public class MainActivity extends Activity {
 
+    private static final int REQ_FILE = 100;
     private static final int REQ_WRITE = 200;
 
     // UI
     private WebView web;
     private LinearLayout tabEmbed;
     private LinearLayout tabExtract;
-
-    /** 半透明系数：卡片/按钮统一 92% 不透明白。 */
-    private static final int CARD_ALPHA = 235;
-    /** 统一间距。 */
-    private static final int GAP = 12;
-    /** 投影深度（dp）。 */
-    private static final int SHADOW_DEPTH = 5;
+    private ValueCallback<Uri[]> filePathCallback;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -60,24 +61,58 @@ public class MainActivity extends Activity {
         int text = color(R.color.tuyin_text);
         int sub = color(R.color.tuyin_sub);
 
-        // 沉浸式瓷白状态栏/导航栏，与页面底色一致
         getWindow().setStatusBarColor(bg);
         getWindow().setNavigationBarColor(bg);
 
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(bg);
 
-        // ---------------- 纵向主栈 ----------------
-        LinearLayout stack = new LinearLayout(this);
-        stack.setOrientation(LinearLayout.VERTICAL);
-        root.addView(stack, new FrameLayout.LayoutParams(
+        // ---- 内容区：WebView 全屏，加载打包工作台 ----
+        web = new WebView(this);
+        web.setBackgroundColor(Color.TRANSPARENT);
+        WebSettings s = web.getSettings();
+        s.setJavaScriptEnabled(true);
+        s.setDomStorageEnabled(true);
+        s.setAllowFileAccess(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
+        web.addJavascriptInterface(new TuyinBridge(), "TuyinBridge");
+        web.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return false;
+            }
+        });
+        // 上传图片：网页 <input type=file> → 系统选图器 → 回传 URI 给网页
+        web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(null);
+                }
+                filePathCallback = callback;
+                Intent intent = params.createIntent();
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                try {
+                    startActivityForResult(Intent.createChooser(intent,
+                            getString(R.string.pick_image_title)), REQ_FILE);
+                } catch (Exception e) {
+                    filePathCallback = null;
+                    return false;
+                }
+                return true;
+            }
+        });
+        root.addView(web, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        web.loadUrl("file:///android_asset/index.html");
 
-        // ---- 顶部标题栏 ----
+        // ---- 顶部标题栏：浮动 + 由上到下渐变（越往下越透明） ----
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(20), dp(16), dp(20), dp(6));
-        stack.addView(header, new LinearLayout.LayoutParams(
+        header.setPadding(dp(20), dp(16), dp(20), dp(8));
+        header.setBackground(headerGradient(bg));
+        root.addView(header, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         LinearLayout titleRow = new LinearLayout(this);
@@ -101,60 +136,54 @@ public class MainActivity extends Activity {
         aboutBtn.setTextSize(14);
         aboutBtn.setTypeface(null, Typeface.BOLD);
         aboutBtn.setGravity(Gravity.CENTER);
-        aboutBtn.setBackground(shadowBg(14, translucent(R.color.tuyin_card, CARD_ALPHA), 3));
+        aboutBtn.setBackground(shadowBg(14, translucent(R.color.tuyin_card, 235), 3));
         aboutBtn.setOnClickListener(v -> startActivity(new Intent(this, AboutActivity.class)));
         titleRow.addView(aboutBtn, new LinearLayout.LayoutParams(dp(72), dp(36)));
 
+        // slogan 左对齐（与标题同一条基线）
         TextView slogan = new TextView(this);
         slogan.setText(R.string.home_slogan);
         slogan.setTextColor(sub);
         slogan.setTextSize(13);
-        slogan.setGravity(Gravity.CENTER);
+        slogan.setGravity(Gravity.START);
         header.addView(slogan, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 内容区：WebView 加载打包工作台 ----
-        web = new WebView(this);
-        web.setBackgroundColor(Color.TRANSPARENT);
-        WebSettings s = web.getSettings();
-        s.setJavaScriptEnabled(true);
-        s.setDomStorageEnabled(true);
-        s.setAllowFileAccess(true);
-        s.setMediaPlaybackRequiresUserGesture(false);
-        web.addJavascriptInterface(new TuyinBridge(), "TuyinBridge");
-        web.setWebViewClient(new WebViewClient() {
-            @Override
-            public boolean shouldOverrideUrlLoading(WebView view, String url) {
-                return false;
-            }
-        });
-        stack.addView(web, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
-        web.loadUrl("file:///android_asset/index.html");
-
-        // ---------------- 悬浮导航（MIUI X：图标+文字，选中圆形高亮） ----------------
+        // ---------------- 底部悬浮导航：去文字、60% 透明、圆角胶囊 ----------------
         LinearLayout seg = new LinearLayout(this);
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setGravity(Gravity.CENTER);
-        seg.setBackground(shadowBg(32, translucent(R.color.tuyin_card, 242), 6));
+        seg.setBackground(shadowBg(32, translucent(R.color.tuyin_card, 153), 6));
 
-        tabEmbed = makeNavItem(R.drawable.ic_embed, R.string.tab_embed);
-        tabExtract = makeNavItem(R.drawable.ic_extract, R.string.tab_extract);
+        tabEmbed = makeNavItem(R.drawable.ic_embed);
+        tabExtract = makeNavItem(R.drawable.ic_extract);
         tabEmbed.setOnClickListener(v -> switchPanel(true));
         tabExtract.setOnClickListener(v -> switchPanel(false));
         tabEmbed.setOnTouchListener(pressScale());
         tabExtract.setOnTouchListener(pressScale());
-        seg.addView(tabEmbed, new LinearLayout.LayoutParams(dp(120), dp(68)));
-        seg.addView(tabExtract, new LinearLayout.LayoutParams(dp(120), dp(68)));
+        seg.addView(tabEmbed, new LinearLayout.LayoutParams(dp(72), dp(64)));
+        seg.addView(tabExtract, new LinearLayout.LayoutParams(dp(72), dp(64)));
 
         FrameLayout.LayoutParams segLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         segLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
-        segLp.bottomMargin = dp(22);
+        segLp.bottomMargin = dp(24);
         root.addView(seg, segLp);
 
         switchPanel(true);
         setContentView(root);
+    }
+
+    /** 标题栏垂直渐变：顶部实色 → 中部半透 → 底部近透明。 */
+    private Drawable headerGradient(int base) {
+        int r = Color.red(base), g = Color.green(base), b = Color.blue(base);
+        GradientDrawable gd = new GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] {
+                        Color.argb(255, r, g, b),
+                        Color.argb(160, r, g, b),
+                        Color.argb(70, r, g, b)
+                });
+        return gd;
     }
 
     /** TuyinBridge：网页 -> 原生（保存到相册、toast）。 */
@@ -191,6 +220,27 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_FILE) {
+            if (filePathCallback == null) return;
+            Uri[] result = null;
+            if (resultCode == RESULT_OK && data != null) {
+                Uri uri = data.getData();
+                if (uri == null) {
+                    if (data.getClipData() != null && data.getClipData().getItemCount() > 0) {
+                        uri = data.getClipData().getItemAt(0).getUri();
+                    }
+                }
+                if (uri != null) result = new Uri[] { uri };
+            }
+            filePathCallback.onReceiveValue(result);
+            filePathCallback = null;
+            web.requestFocus();
+        }
+    }
+
+    @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQ_WRITE) {
@@ -211,26 +261,23 @@ public class MainActivity extends Activity {
         applyNavState(tabExtract, !embed);
     }
 
-    /** 悬浮导航选中态：蓝色圆形图标 + 蓝色文字；未选中：半透明灰、无圆底。 */
+    /** 悬浮导航选中态：蓝色圆形图标；未选中：半透明灰、无圆底。 */
     private void applyNavState(LinearLayout item, boolean selected) {
         ImageView icon = (ImageView) item.getTag(R.id.navIcon);
-        TextView label = (TextView) item.getTag(R.id.navLabel);
         GradientDrawable circle = (GradientDrawable) icon.getBackground();
         if (selected) {
             circle.setColor(color(R.color.tuyin_primary));
             icon.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
-            label.setTextColor(color(R.color.tuyin_primary));
             item.setAlpha(1f);
         } else {
             circle.setColor(Color.TRANSPARENT);
             icon.setColorFilter(color(R.color.tuyin_sub), PorterDuff.Mode.SRC_IN);
-            label.setTextColor(color(R.color.tuyin_sub));
             item.setAlpha(0.45f);
         }
     }
 
-    /** 悬浮导航项：竖向图标（圆形底）+ 文字。 */
-    private LinearLayout makeNavItem(int iconRes, int labelRes) {
+    /** 悬浮导航项：纯图标（圆形底），无文字。 */
+    private LinearLayout makeNavItem(int iconRes) {
         LinearLayout item = new LinearLayout(this);
         item.setOrientation(LinearLayout.VERTICAL);
         item.setGravity(Gravity.CENTER);
@@ -243,21 +290,12 @@ public class MainActivity extends Activity {
         circle.setShape(GradientDrawable.OVAL);
         circle.setColor(Color.TRANSPARENT);
         icon.setBackground(circle);
-        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(44), dp(44));
-        iconLp.topMargin = dp(5);
-        iconLp.bottomMargin = dp(3);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(46), dp(46));
+        iconLp.topMargin = dp(6);
+        iconLp.bottomMargin = dp(6);
         item.addView(icon, iconLp);
 
-        TextView label = new TextView(this);
-        label.setText(labelRes);
-        label.setTextSize(11);
-        label.setTypeface(null, Typeface.BOLD);
-        label.setGravity(Gravity.CENTER);
-        item.addView(label, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
         item.setTag(R.id.navIcon, icon);
-        item.setTag(R.id.navLabel, label);
         return item;
     }
 
