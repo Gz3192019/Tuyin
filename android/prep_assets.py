@@ -83,9 +83,10 @@ def build():
     #       the app's porcelain-white shows through, hide web-only chrome
     #       (header/footer/tabs handled by the native bottom nav), and
     #       flatten web cards so controls read as native MIUI components.
+    #       body padding-top reserves room for the floating gradient header.
     native_style = (
         '<style id="tuyin-native">\n'
-        'body{background:transparent!important}\n'
+        'body{background:transparent!important;padding-top:96px!important}\n'
         '.bg-glow{display:none!important}\n'
         '.site-header,.site-footer,.tabs,.boot-warn{display:none!important}\n'
         '.card{background:transparent!important;border-color:transparent!important;box-shadow:none!important}\n'
