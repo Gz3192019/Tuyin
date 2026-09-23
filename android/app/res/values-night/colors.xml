@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tuyin_bg">#1A1A1E</color>
+    <color name="tuyin_card">#232327</color>
+    <color name="tuyin_primary">#3D9BFF</color>
+    <color name="tuyin_text">#F2F3F7</color>
+    <color name="tuyin_sub">#9CA3AF</color>
+    <color name="tuyin_seg_bg">#2A2A30</color>
+    <color name="tuyin_seg_line">#34343C</color>
+</resources>

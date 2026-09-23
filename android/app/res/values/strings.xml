@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">图隐</string>
+    <string name="about_title">关于</string>
+    <string name="tab_embed">嵌入</string>
+    <string name="tab_extract">提取</string>
+    <string name="version_name">1.0</string>
+    <string name="about_desc">把一张图藏进另一张图。</string>
+    <string name="about_desc2">基于 RAC-Hide 鲁棒 DCT 隐写算法（零依赖、抗 JPEG 重压缩与等比缩放）。</string>
+    <string name="about_desc3">全程本地计算，不上传任何图片。</string>
+</resources>
