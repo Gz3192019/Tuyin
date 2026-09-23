@@ -6,14 +6,18 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Outline;
+import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -29,7 +33,8 @@ import android.widget.Toast;
 
 /**
  * 图隐 — 原生隐写工作台。
- * MIUI X 风格：瓷白底、圆角卡片+投影、悬浮导航（未选中半透明）。
+ * MIUI X 风格：瓷白底、半透明圆角卡片（投影跟随圆角）、按列分组居中、
+ * 底部悬浮导航（图标 + 选中圆形高亮，未选中半透明）。
  * 嵌入/提取全部由本地 Java 算法完成（与上游 JS 实现互通）。
  */
 public class MainActivity extends Activity {
@@ -50,8 +55,8 @@ public class MainActivity extends Activity {
     // UI
     private LinearLayout panelEmbed;
     private LinearLayout panelExtract;
-    private TextView tabEmbed;
-    private TextView tabExtract;
+    private LinearLayout tabEmbed;
+    private LinearLayout tabExtract;
     private ImageView coverPreview;
     private ImageView secretPreview;
     private ImageView stegoPreview;
@@ -84,6 +89,9 @@ public class MainActivity extends Activity {
     private Button btnExtract;
     private Button btnResetEmbed;
     private Button btnResetExtract;
+
+    /** 半透明系数：卡片/按钮统一 92% 不透明白。 */
+    private static final int CARD_ALPHA = 235;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -132,8 +140,10 @@ public class MainActivity extends Activity {
         GradientDrawable aboutShape = new GradientDrawable();
         aboutShape.setCornerRadius(dp(14));
         aboutShape.setStroke(dp(1), primary);
-        aboutShape.setColor(card);
+        aboutShape.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
         aboutBtn.setBackground(aboutShape);
+        aboutBtn.setElevation(dp(4));
+        roundOutline(aboutBtn, 14);
         aboutBtn.setOnClickListener(v -> startActivity(new Intent(this, AboutActivity.class)));
         titleRow.addView(aboutBtn, new LinearLayout.LayoutParams(dp(72), dp(36)));
 
@@ -151,7 +161,7 @@ public class MainActivity extends Activity {
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16), dp(8), dp(16), dp(112));
+        content.setPadding(dp(16), dp(8), dp(16), dp(116));
         scroll.addView(content);
 
         // ================ 嵌入面板 ================
@@ -160,8 +170,10 @@ public class MainActivity extends Activity {
         content.addView(panelEmbed, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // ---- 上传双格（一列组：两列等宽、内容居中） ----
         LinearLayout uploadRow = new LinearLayout(this);
         uploadRow.setOrientation(LinearLayout.HORIZONTAL);
+        uploadRow.setGravity(Gravity.CENTER);
         panelEmbed.addView(uploadRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -169,7 +181,7 @@ public class MainActivity extends Activity {
         LinearLayout secretBox = makeUploadBox(card, primary, "秘密图 · 被隐藏", v -> pick(PICK_SECRET));
         uploadRow.addView(coverBox, new LinearLayout.LayoutParams(0, dp(190), 1f));
         LinearLayout.LayoutParams secretLp = new LinearLayout.LayoutParams(0, dp(190), 1f);
-        secretLp.leftMargin = dp(10);
+        secretLp.leftMargin = dp(12);
         uploadRow.addView(secretBox, secretLp);
 
         coverBoxText = (View) coverBox.getTag(R.id.placeholder);
@@ -177,7 +189,7 @@ public class MainActivity extends Activity {
         secretBoxText = (View) secretBox.getTag(R.id.placeholder);
         secretBoxImg = (ImageView) secretBox.getTag(R.id.preview);
 
-        // 容量条
+        // ---- 容量条卡 ----
         LinearLayout capCard = makeCard(card);
         panelEmbed.addView(capCard, cardLp(0, dp(12)));
 
@@ -202,7 +214,7 @@ public class MainActivity extends Activity {
 
         capacityBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         GradientDrawable barTrack = new GradientDrawable();
-        barTrack.setColor(color(R.color.tuyin_seg_bg));
+        barTrack.setColor(translucent(R.color.tuyin_seg_bg, 210));
         barTrack.setCornerRadius(dp(4));
         capacityBar.setProgressDrawable(barTrack);
         LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
@@ -210,7 +222,7 @@ public class MainActivity extends Activity {
         barLp.topMargin = dp(8);
         capCard.addView(capacityBar, barLp);
 
-        // 封面增强
+        // ---- 封面增强卡 ----
         LinearLayout enhanceCard = makeCard(card);
         panelEmbed.addView(enhanceCard, cardLp(0, dp(12)));
 
@@ -234,7 +246,7 @@ public class MainActivity extends Activity {
                 new String[] { "不放大（原尺寸）", "长边 ≤ 512", "长边 ≤ 768", "长边 ≤ 1024", "长边 ≤ 1280", "长边 ≤ 2048" }));
         enhanceRow.addView(enhanceSpinner, new LinearLayout.LayoutParams(0, dp(44), 1f));
 
-        // 画质档位
+        // ---- 画质与容量卡 ----
         LinearLayout tierCard = makeCard(card);
         panelEmbed.addView(tierCard, cardLp(0, dp(12)));
 
@@ -271,14 +283,23 @@ public class MainActivity extends Activity {
         });
         updateTierName(50);
 
-        // 自定义参数（可展开）
+        // ---- 自定义参数（全宽圆角胶囊，与卡片同宽） ----
         Button customToggle = new Button(this);
         customToggle.setText("自定义参数");
         customToggle.setTextColor(primary);
-        customToggle.setTextSize(12);
+        customToggle.setTextSize(13);
+        customToggle.setTypeface(null, Typeface.BOLD);
         customToggle.setAllCaps(false);
-        customToggle.setBackgroundColor(Color.TRANSPARENT);
-        panelEmbed.addView(customToggle, wrapLp(0, dp(4), Gravity.START));
+        GradientDrawable toggleBg = new GradientDrawable();
+        toggleBg.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
+        toggleBg.setCornerRadius(dp(16));
+        customToggle.setBackground(toggleBg);
+        customToggle.setElevation(dp(3));
+        roundOutline(customToggle, 16);
+        LinearLayout.LayoutParams toggleLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
+        toggleLp.topMargin = dp(12);
+        panelEmbed.addView(customToggle, toggleLp);
 
         customRow = new LinearLayout(this);
         customRow.setOrientation(LinearLayout.VERTICAL);
@@ -294,28 +315,30 @@ public class MainActivity extends Activity {
             customToggle.setText(customRow.getVisibility() == View.VISIBLE ? "收起参数" : "自定义参数");
         });
 
-        // 操作按钮
+        // ---- 操作按钮 ----
         btnEmbed = primaryButton("开始嵌入", primary, card);
         btnSaveStego = ghostButton("保存隐写图到相册", primary, card);
         btnResetEmbed = ghostButton("重置", sub, card);
         panelEmbed.addView(btnEmbed, btnLp(0, dp(12)));
         LinearLayout embedBtnRow = new LinearLayout(this);
         embedBtnRow.setOrientation(LinearLayout.HORIZONTAL);
-        panelEmbed.addView(embedBtnRow, wrapLp(0, dp(8), Gravity.START));
+        embedBtnRow.setGravity(Gravity.CENTER);
+        panelEmbed.addView(embedBtnRow, wrapLp(0, dp(8), Gravity.CENTER));
         embedBtnRow.addView(btnSaveStego, new LinearLayout.LayoutParams(0, dp(44), 1f));
         LinearLayout.LayoutParams resetLp = new LinearLayout.LayoutParams(0, dp(44), 1f);
-        resetLp.leftMargin = dp(10);
+        resetLp.leftMargin = dp(12);
         embedBtnRow.addView(btnResetEmbed, resetLp);
 
         embedStatus = new TextView(this);
         embedStatus.setTextColor(sub);
         embedStatus.setTextSize(12);
-        panelEmbed.addView(embedStatus, wrapLp(0, dp(10), Gravity.START));
+        panelEmbed.addView(embedStatus, wrapLp(0, dp(10), Gravity.CENTER));
 
-        // 预览三卡
+        // ---- 预览三卡（一列组：三列等宽、居中） ----
         LinearLayout embedPreviewRow = new LinearLayout(this);
         embedPreviewRow.setOrientation(LinearLayout.HORIZONTAL);
-        panelEmbed.addView(embedPreviewRow, wrapLp(0, dp(4), Gravity.START));
+        embedPreviewRow.setGravity(Gravity.CENTER);
+        panelEmbed.addView(embedPreviewRow, wrapLp(0, dp(4), Gravity.CENTER));
         ImageView coverPv = new ImageView(this);
         ImageView secretPv = new ImageView(this);
         ImageView stegoPv = new ImageView(this);
@@ -342,11 +365,12 @@ public class MainActivity extends Activity {
 
         LinearLayout stegoBox = makeUploadBox(card, primary, "隐写图 · 要解密的图片", v -> pick(PICK_STEGO));
         panelExtract.addView(stegoBox, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(170)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(190)));
         stegoBoxText = (View) stegoBox.getTag(R.id.placeholder);
         stegoBoxImg = (ImageView) stegoBox.getTag(R.id.preview);
         stegoBoxImg.setVisibility(View.GONE);
 
+        // ---- 原图尺寸卡 ----
         LinearLayout sizeCard = makeCard(card);
         panelExtract.addView(sizeCard, cardLp(0, dp(12)));
 
@@ -359,7 +383,7 @@ public class MainActivity extends Activity {
 
         LinearLayout sizeInputRow = new LinearLayout(this);
         sizeInputRow.setOrientation(LinearLayout.HORIZONTAL);
-        sizeInputRow.setGravity(Gravity.CENTER_VERTICAL);
+        sizeInputRow.setGravity(Gravity.CENTER);
         LinearLayout.LayoutParams sizeInputLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         sizeInputLp.topMargin = dp(8);
@@ -374,26 +398,30 @@ public class MainActivity extends Activity {
         coverHInput = numberInput("高");
         sizeInputRow.addView(coverHInput, new LinearLayout.LayoutParams(0, dp(44), 1f));
 
+        // ---- 操作按钮 ----
         btnExtract = primaryButton("提取秘密图", primary, card);
         btnSaveExtracted = ghostButton("保存秘密图到相册", primary, card);
         btnResetExtract = ghostButton("重置", sub, card);
         panelExtract.addView(btnExtract, btnLp(0, dp(12)));
         LinearLayout extractBtnRow = new LinearLayout(this);
         extractBtnRow.setOrientation(LinearLayout.HORIZONTAL);
-        panelExtract.addView(extractBtnRow, wrapLp(0, dp(8), Gravity.START));
+        extractBtnRow.setGravity(Gravity.CENTER);
+        panelExtract.addView(extractBtnRow, wrapLp(0, dp(8), Gravity.CENTER));
         extractBtnRow.addView(btnSaveExtracted, new LinearLayout.LayoutParams(0, dp(44), 1f));
         LinearLayout.LayoutParams resetLp2 = new LinearLayout.LayoutParams(0, dp(44), 1f);
-        resetLp2.leftMargin = dp(10);
+        resetLp2.leftMargin = dp(12);
         extractBtnRow.addView(btnResetExtract, resetLp2);
 
         extractStatus = new TextView(this);
         extractStatus.setTextColor(sub);
         extractStatus.setTextSize(12);
-        panelExtract.addView(extractStatus, wrapLp(0, dp(10), Gravity.START));
+        panelExtract.addView(extractStatus, wrapLp(0, dp(10), Gravity.CENTER));
 
+        // ---- 预览双卡 ----
         LinearLayout extractPreviewRow = new LinearLayout(this);
         extractPreviewRow.setOrientation(LinearLayout.HORIZONTAL);
-        panelExtract.addView(extractPreviewRow, wrapLp(0, dp(4), Gravity.START));
+        extractPreviewRow.setGravity(Gravity.CENTER);
+        panelExtract.addView(extractPreviewRow, wrapLp(0, dp(4), Gravity.CENTER));
         ImageView stegoPv2 = new ImageView(this);
         ImageView resultPv = new ImageView(this);
         extractPreviewRow.addView(makePreviewCard(card, "隐写图", stegoPv2),
@@ -403,30 +431,25 @@ public class MainActivity extends Activity {
         extractPreviewRow.addView(makePreviewCard(card, "提取结果", resultPv), p3);
         stegoPreview2 = stegoPv2;
 
-        // ---------------- 悬浮导航（未选中半透明） ----------------
+        // ---------------- 悬浮导航（MIUI X：图标+文字，选中圆形高亮） ----------------
         LinearLayout seg = new LinearLayout(this);
         seg.setOrientation(LinearLayout.HORIZONTAL);
+        seg.setGravity(Gravity.CENTER);
         GradientDrawable segShape = new GradientDrawable();
-        segShape.setColor(card);
-        segShape.setCornerRadius(dp(28));
-        seg.setElevation(dp(10));
+        segShape.setColor(translucent(R.color.tuyin_card, 242));
+        segShape.setCornerRadius(dp(32));
         seg.setBackground(segShape);
+        seg.setElevation(dp(14));
+        roundOutline(seg, 32);
 
-        tabEmbed = new TextView(this);
-        tabEmbed.setText(R.string.tab_embed);
-        tabEmbed.setGravity(Gravity.CENTER);
-        tabEmbed.setTextSize(14);
-        tabEmbed.setTypeface(null, Typeface.BOLD);
-        tabEmbed.setClickable(true);
-        seg.addView(tabEmbed, new LinearLayout.LayoutParams(dp(140), dp(52)));
-
-        tabExtract = new TextView(this);
-        tabExtract.setText(R.string.tab_extract);
-        tabExtract.setGravity(Gravity.CENTER);
-        tabExtract.setTextSize(14);
-        tabExtract.setTypeface(null, Typeface.BOLD);
-        tabExtract.setClickable(true);
-        seg.addView(tabExtract, new LinearLayout.LayoutParams(dp(140), dp(52)));
+        tabEmbed = makeNavItem(R.drawable.ic_embed, R.string.tab_embed);
+        tabExtract = makeNavItem(R.drawable.ic_extract, R.string.tab_extract);
+        tabEmbed.setOnClickListener(v -> switchPanel(true));
+        tabExtract.setOnClickListener(v -> switchPanel(false));
+        tabEmbed.setOnTouchListener(pressScale());
+        tabExtract.setOnTouchListener(pressScale());
+        seg.addView(tabEmbed, new LinearLayout.LayoutParams(dp(120), dp(68)));
+        seg.addView(tabExtract, new LinearLayout.LayoutParams(dp(120), dp(68)));
 
         FrameLayout.LayoutParams segLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
@@ -434,8 +457,6 @@ public class MainActivity extends Activity {
         segLp.bottomMargin = dp(22);
         root.addView(seg, segLp);
 
-        tabEmbed.setOnClickListener(v -> switchPanel(true));
-        tabExtract.setOnClickListener(v -> switchPanel(false));
         switchPanel(true);
 
         btnEmbed.setOnClickListener(v -> doEmbed());
@@ -449,15 +470,17 @@ public class MainActivity extends Activity {
 
     /* ================= UI 构建工具 ================= */
 
+    /** 上传框：半透明圆角卡片，中央「＋」圆钮 + 主/副提示，内容垂直居中。 */
     private LinearLayout makeUploadBox(int card, int primary, String hint, View.OnClickListener l) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
         box.setGravity(Gravity.CENTER);
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(card);
+        shape.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
         shape.setCornerRadius(dp(20));
         box.setBackground(shape);
         box.setElevation(dp(6));
+        roundOutline(box, 20);
         box.setClickable(true);
         box.setOnClickListener(l);
 
@@ -467,7 +490,6 @@ public class MainActivity extends Activity {
         box.addView(preview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // 上传引导：淡蓝圆钮 + 主提示 + 副提示
         LinearLayout iconWrap = new LinearLayout(this);
         iconWrap.setOrientation(LinearLayout.VERTICAL);
         iconWrap.setGravity(Gravity.CENTER);
@@ -475,14 +497,14 @@ public class MainActivity extends Activity {
         TextView icon = new TextView(this);
         icon.setText("＋");
         icon.setTextColor(card);
-        icon.setTextSize(24);
+        icon.setTextSize(22);
         icon.setTypeface(null, Typeface.BOLD);
         icon.setGravity(Gravity.CENTER);
         GradientDrawable circle = new GradientDrawable();
         circle.setShape(GradientDrawable.OVAL);
         circle.setColor(primary);
         icon.setBackground(circle);
-        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(52), dp(52));
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(48), dp(48));
         iconLp.bottomMargin = dp(10);
         iconWrap.addView(icon, iconLp);
 
@@ -513,26 +535,30 @@ public class MainActivity extends Activity {
         return box;
     }
 
+    /** 通用半透明圆角卡片（投影跟随圆角）。 */
     private LinearLayout makeCard(int card) {
         LinearLayout cardView = new LinearLayout(this);
         cardView.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(card);
+        shape.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
         shape.setCornerRadius(dp(18));
         cardView.setBackground(shape);
         cardView.setElevation(dp(5));
+        roundOutline(cardView, 18);
         cardView.setPadding(dp(16), dp(14), dp(16), dp(14));
         return cardView;
     }
 
+    /** 预览卡：半透明圆角卡片。 */
     private LinearLayout makePreviewCard(int card, String label, ImageView img) {
         LinearLayout wrapper = new LinearLayout(this);
         wrapper.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(card);
+        shape.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
         shape.setCornerRadius(dp(16));
         wrapper.setBackground(shape);
         wrapper.setElevation(dp(4));
+        roundOutline(wrapper, 16);
         wrapper.setPadding(dp(8), dp(8), dp(8), dp(8));
 
         TextView lab = new TextView(this);
@@ -551,6 +577,7 @@ public class MainActivity extends Activity {
         return wrapper;
     }
 
+    /** 主按钮：蓝色胶囊 + 投影。 */
     private Button primaryButton(String label, int primary, int card) {
         Button b = new Button(this);
         b.setText(label);
@@ -563,9 +590,11 @@ public class MainActivity extends Activity {
         shape.setCornerRadius(dp(24));
         b.setBackground(shape);
         b.setElevation(dp(7));
+        roundOutline(b, 24);
         return b;
     }
 
+    /** 次按钮：半透明白底 + 彩色描边 + 投影。 */
     private Button ghostButton(String label, int accent, int card) {
         Button b = new Button(this);
         b.setText(label);
@@ -573,12 +602,58 @@ public class MainActivity extends Activity {
         b.setTextSize(13);
         b.setAllCaps(false);
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(card);
+        shape.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
         shape.setCornerRadius(dp(22));
         shape.setStroke(dp(1), accent);
         b.setBackground(shape);
         b.setElevation(dp(4));
+        roundOutline(b, 22);
         return b;
+    }
+
+    /** 悬浮导航项：竖向图标（圆形底）+ 文字。 */
+    private LinearLayout makeNavItem(int iconRes, int labelRes) {
+        LinearLayout item = new LinearLayout(this);
+        item.setOrientation(LinearLayout.VERTICAL);
+        item.setGravity(Gravity.CENTER);
+        item.setClickable(true);
+
+        ImageView icon = new ImageView(this);
+        icon.setImageResource(iconRes);
+        icon.setScaleType(ImageView.ScaleType.CENTER);
+        GradientDrawable circle = new GradientDrawable();
+        circle.setShape(GradientDrawable.OVAL);
+        circle.setColor(Color.TRANSPARENT);
+        icon.setBackground(circle);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(44), dp(44));
+        iconLp.topMargin = dp(5);
+        iconLp.bottomMargin = dp(3);
+        item.addView(icon, iconLp);
+
+        TextView label = new TextView(this);
+        label.setText(labelRes);
+        label.setTextSize(11);
+        label.setTypeface(null, Typeface.BOLD);
+        label.setGravity(Gravity.CENTER);
+        item.addView(label, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        item.setTag(R.id.navIcon, icon);
+        item.setTag(R.id.navLabel, label);
+        return item;
+    }
+
+    /** 按压反馈：按下轻微缩小。 */
+    private View.OnTouchListener pressScale() {
+        return (v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                v.animate().scaleX(0.94f).scaleY(0.94f).setDuration(80).start();
+            } else if (event.getAction() == MotionEvent.ACTION_UP
+                    || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                v.animate().scaleX(1f).scaleY(1f).setDuration(120).start();
+            }
+            return false;
+        };
     }
 
     private void addParamSlider(LinearLayout parent, String label, int min, int max,
@@ -625,7 +700,7 @@ public class MainActivity extends Activity {
         et.setGravity(Gravity.CENTER);
         et.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
         GradientDrawable shape = new GradientDrawable();
-        shape.setColor(color(R.color.tuyin_card));
+        shape.setColor(translucent(R.color.tuyin_card, CARD_ALPHA));
         shape.setCornerRadius(dp(10));
         shape.setStroke(dp(1), color(R.color.tuyin_seg_line));
         et.setBackground(shape);
@@ -671,6 +746,21 @@ public class MainActivity extends Activity {
         return getResources().getColor(id);
     }
 
+    /** 资源色按指定 alpha 转半透明（深浅模式都生效）。 */
+    private int translucent(int colorId, int alpha) {
+        int c = color(colorId);
+        return Color.argb(alpha, Color.red(c), Color.green(c), Color.blue(c));
+    }
+
+    /** 圆角投影：让 elevation 阴影跟随组件圆角。 */
+    private void roundOutline(View v, int radiusDp) {
+        v.setOutlineProvider(new ViewOutlineProvider() {
+            @Override public void getOutline(View view, Outline outline) {
+                outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(radiusDp));
+            }
+        });
+    }
+
     private void toast(String msg) {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
@@ -680,12 +770,26 @@ public class MainActivity extends Activity {
     private void switchPanel(boolean embed) {
         panelEmbed.setVisibility(embed ? View.VISIBLE : View.GONE);
         panelExtract.setVisibility(embed ? View.GONE : View.VISIBLE);
-        int text = color(R.color.tuyin_text);
-        int primary = color(R.color.tuyin_primary);
-        tabEmbed.setTextColor(embed ? primary : text);
-        tabExtract.setTextColor(embed ? text : primary);
-        tabEmbed.setAlpha(embed ? 1f : 0.45f);
-        tabExtract.setAlpha(embed ? 0.45f : 1f);
+        applyNavState(tabEmbed, embed);
+        applyNavState(tabExtract, !embed);
+    }
+
+    /** 悬浮导航选中态：蓝色圆形图标 + 蓝色文字；未选中：半透明灰、无圆底。 */
+    private void applyNavState(LinearLayout item, boolean selected) {
+        ImageView icon = (ImageView) item.getTag(R.id.navIcon);
+        TextView label = (TextView) item.getTag(R.id.navLabel);
+        GradientDrawable circle = (GradientDrawable) icon.getBackground();
+        if (selected) {
+            circle.setColor(color(R.color.tuyin_primary));
+            icon.setColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN);
+            label.setTextColor(color(R.color.tuyin_primary));
+            item.setAlpha(1f);
+        } else {
+            circle.setColor(Color.TRANSPARENT);
+            icon.setColorFilter(color(R.color.tuyin_sub), PorterDuff.Mode.SRC_IN);
+            label.setTextColor(color(R.color.tuyin_sub));
+            item.setAlpha(0.45f);
+        }
     }
 
     /* ================= 选图 ================= */
