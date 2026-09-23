@@ -39,9 +39,9 @@ feedback and previews. All computation stays on your device.
 
 A self-contained interactive workbench with drag-and-drop upload, capacity
 meter, cover enhancement, three operating points plus fully custom parameters,
-a channel simulator (scale + re-compress + re-extract) and a how-it-works
-section. It supports **light / dark mode** (follows the system, or toggle
-manually) and an **in-place extract verification** button after embedding.
+a channel simulator (scale + re-compress + re-extract). It supports **light /
+dark mode** (follows the system, or toggle manually) and an **in-place extract
+verification** button after embedding.
 
 - Local run: `python3 -m http.server 8000` then open
   `http://localhost:8000/gui/` (ES modules need HTTP, not `file://`).
@@ -56,10 +56,11 @@ manually) and an **in-place extract verification** button after embedding.
 
 A standalone Android app wrapping the workbench in a native MIUI X-style shell:
 native title bar, segmented 嵌入/提取 tabs and a rounded-card WebView workbench,
-plus a native 关于 (About) page carrying the app name **图隐** and version.
-No permissions, fully offline.
+plus a native 关于 (About) page carrying the app name **图隐** and version — a grouped list that
+pays tribute to the original author's GitHub. Storage permissions are declared for picking images and
+saving exported PNGs to the system gallery; the app never connects to the network.
 
-- Prebuilt APK: `Tuyin-1.0.apk` (repo root, ~70 KB, self-signed v2+v3).
+- Prebuilt APK: `Tuyin-1.0.apk` (repo root, ~78 KB, self-signed v2+v3).
 - Build from source and install steps: see [`android/README.md`](android/README.md).
 
 ---
