@@ -4,16 +4,17 @@
 基于 RAC-Hide 鲁棒 DCT 隐写算法内核（零依赖、抗 JPEG 重压缩与等比缩放），
 **全程本地计算，不上传任何图片**。
 
-- 原生 MIUI X 风格壳：大标题栏、分段标签（嵌入/提取）、圆角卡片工作台
-- 原生「关于」页：应用图标、应用名 **图隐**、版本 1.0、项目链接
+- 原生 MIUI X 风格壳：瓷白大标题主页、分段标签（嵌入/提取）、圆角卡片工作台、圆形「关于」入口
+- 原生「关于」页（分组列表）：应用图标、应用名 **图隐**、版本、开发者、当前系统信息、开源项目（致敬原作者 GitHub）
 - 工作台内核为单文件自包含页面（内联全部 JS/CSS），随 APK 打包，**离线可用**
+- 系统图片选择器：点击工作台上传区直接调起系统相册选图；导出图片自动存入系统相册
 - 明暗模式：原生壳跟随系统（values-night），工作台内可手动切换
 
 ## 成品
 
-- 根目录 `Tuyin-1.0.apk`（约 70 KB，签名 v2+v3）
+- 根目录 `Tuyin-1.0.apk`（约 78 KB，签名 v2+v3）
   - 包名 `com.tuopzf.tuyin`，应用名 **图隐**，minSdk 24（Android 7.0+），targetSdk 34
-  - 无任何权限（不联网、不读存储外的数据）
+  - 权限：读取图片（Android 13+ 用 READ_MEDIA_IMAGES，7-12 用 READ_EXTERNAL_STORAGE）与保存图片到相册（Android 9 及以下用 WRITE_EXTERNAL_STORAGE）；不联网、不上传任何图片
 
 ## 安装到手机
 
@@ -36,7 +37,7 @@ $bt = "D:\files\Desk\work\tank-github\rac-hide-main\android-tools"
 $jdk = "$bt\jdk\jdk-17.0.2\bin"
 $app = "D:\files\Desk\work\tank-github\rac-hide-main\android\app"
 
-# 0. 从 gui/ 源码重新生成 assets/index.html（克隆后可重建，无需提交构建产物）
+# 0. 页面更新后重新生成 assets/index.html
 python android\prep_assets.py
 
 # 1. aapt：打包资源/清单/资产 并生成 R.java
@@ -65,9 +66,9 @@ $classFiles = (Get-ChildItem "$app\build\classes" -Recurse -Filter *.class | % {
 ```
 android/
   app/
-    AndroidManifest.xml       清单（包名 com.tuopzf.tuyin / 应用名 图隐 / 无权限）
-    src/MainActivity.java     MIUI X 主界面（标题栏 + 分段标签 + 圆角卡片 WebView）
-    src/AboutActivity.java    关于页（图标 / 应用名「图隐」/ 版本 / 项目链接）
+    AndroidManifest.xml       清单（包名 com.tuopzf.tuyin / 应用名 图隐 / 图片读写权限）
+    src/MainActivity.java     MIUI X 主界面（瓷白主页：标题+标语+圆形关于入口+分段标签+圆角卡片 WebView+文件选择/相册保存）
+    src/AboutActivity.java    关于页（分组列表：图标 / 应用名 / 版本 / 开发者 / 系统信息 / 致敬原作者）
     res/values*/              浅色 + 深色主题、颜色、文案（app_name=图隐）
     res/drawable/             圆角卡片、分段标签、启动图标（隐字标）
     assets/index.html         自包含工作台页面（构建时生成）
