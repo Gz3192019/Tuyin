@@ -288,6 +288,8 @@ public class MainActivity extends Activity {
         customToggle.setTextSize(13);
         customToggle.setTypeface(null, Typeface.BOLD);
         customToggle.setAllCaps(false);
+        customToggle.setGravity(Gravity.CENTER);
+        customToggle.setPadding(0, 0, 0, 0);
         customToggle.setBackground(shadowBg(16, translucent(R.color.tuyin_card, CARD_ALPHA), 3));
         LinearLayout.LayoutParams toggleLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
@@ -371,6 +373,7 @@ public class MainActivity extends Activity {
         sizeLabel.setText("原图尺寸（可选，恢复缩放）");
         sizeLabel.setTextColor(text);
         sizeLabel.setTextSize(13);
+        sizeLabel.setGravity(Gravity.CENTER);
         sizeCard.addView(sizeLabel, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -536,8 +539,9 @@ public class MainActivity extends Activity {
 
         TextView lab = new TextView(this);
         lab.setText(label);
-        lab.setTextColor(color(R.color.tuyin_sub));
-        lab.setTextSize(11);
+        lab.setTextColor(color(R.color.tuyin_text));
+        lab.setTextSize(14);
+        lab.setTypeface(null, Typeface.BOLD);
         lab.setGravity(Gravity.CENTER);
         wrapper.addView(lab, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -550,7 +554,7 @@ public class MainActivity extends Activity {
         return wrapper;
     }
 
-    /** 主按钮：蓝色胶囊 + 圆角投影。 */
+    /** 主按钮：蓝色胶囊 + 圆角投影，文字强制水平居中。 */
     private Button primaryButton(String label, int primary, int card) {
         Button b = new Button(this);
         b.setText(label);
@@ -558,17 +562,21 @@ public class MainActivity extends Activity {
         b.setTextSize(15);
         b.setTypeface(null, Typeface.BOLD);
         b.setAllCaps(false);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, 0, 0, 0);
         b.setBackground(shadowBg(24, primary, SHADOW_DEPTH + 1));
         return b;
     }
 
-    /** 次按钮：半透明白底 + 彩色描边 + 圆角投影。 */
+    /** 次按钮：半透明白底 + 彩色描边 + 圆角投影，文字强制水平居中。 */
     private Button ghostButton(String label, int accent, int card) {
         Button b = new Button(this);
         b.setText(label);
         b.setTextColor(accent);
         b.setTextSize(13);
         b.setAllCaps(false);
+        b.setGravity(Gravity.CENTER);
+        b.setPadding(0, 0, 0, 0);
         GradientDrawable body = shapeBg(22, translucent(R.color.tuyin_card, CARD_ALPHA));
         body.setStroke(dp(1), accent);
         b.setBackground(shadowWrap(body, 22, 4));
