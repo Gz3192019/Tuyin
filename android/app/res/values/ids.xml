@@ -2,4 +2,6 @@
 <resources>
     <item name="placeholder" type="id"/>
     <item name="preview" type="id"/>
+    <item name="navIcon" type="id"/>
+    <item name="navLabel" type="id"/>
 </resources>
