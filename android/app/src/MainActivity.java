@@ -83,12 +83,12 @@ public class MainActivity extends Activity {
     private TextView nsymVal;
     private EditText coverWInput;
     private EditText coverHInput;
-    private Button btnEmbed;
-    private Button btnSaveStego;
-    private Button btnSaveExtracted;
-    private Button btnExtract;
-    private Button btnResetEmbed;
-    private Button btnResetExtract;
+    private TextView btnEmbed;
+    private TextView btnSaveStego;
+    private TextView btnSaveExtracted;
+    private TextView btnExtract;
+    private TextView btnResetEmbed;
+    private TextView btnResetExtract;
 
     /** 半透明系数：卡片/按钮统一 92% 不透明白。 */
     private static final int CARD_ALPHA = 235;
@@ -282,14 +282,13 @@ public class MainActivity extends Activity {
         updateTierName(50);
 
         // ---- 自定义参数（全宽圆角胶囊，与卡片同宽） ----
-        Button customToggle = new Button(this);
+        TextView customToggle = new TextView(this);
         customToggle.setText("自定义参数");
         customToggle.setTextColor(primary);
         customToggle.setTextSize(13);
         customToggle.setTypeface(null, Typeface.BOLD);
-        customToggle.setAllCaps(false);
         customToggle.setGravity(Gravity.CENTER);
-        customToggle.setPadding(0, 0, 0, 0);
+        customToggle.setClickable(true);
         customToggle.setBackground(shadowBg(16, translucent(R.color.tuyin_card, CARD_ALPHA), 3));
         LinearLayout.LayoutParams toggleLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(46));
@@ -554,29 +553,28 @@ public class MainActivity extends Activity {
         return wrapper;
     }
 
-    /** 主按钮：蓝色胶囊 + 圆角投影，文字强制水平居中。 */
-    private Button primaryButton(String label, int primary, int card) {
-        Button b = new Button(this);
+    /** 主按钮：蓝色胶囊 + 圆角投影，TextView 文字绝对居中。 */
+    private TextView primaryButton(String label, int primary, int card) {
+        TextView b = new TextView(this);
         b.setText(label);
         b.setTextColor(card);
         b.setTextSize(15);
         b.setTypeface(null, Typeface.BOLD);
-        b.setAllCaps(false);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(0, 0, 0, 0);
+        b.setClickable(true);
         b.setBackground(shadowBg(24, primary, SHADOW_DEPTH + 1));
         return b;
     }
 
-    /** 次按钮：半透明白底 + 彩色描边 + 圆角投影，文字强制水平居中。 */
-    private Button ghostButton(String label, int accent, int card) {
-        Button b = new Button(this);
+    /** 次按钮：半透明白底 + 彩色描边 + 圆角投影，TextView 文字绝对居中。 */
+    private TextView ghostButton(String label, int accent, int card) {
+        TextView b = new TextView(this);
         b.setText(label);
         b.setTextColor(accent);
         b.setTextSize(13);
-        b.setAllCaps(false);
+        b.setTypeface(null, Typeface.BOLD);
         b.setGravity(Gravity.CENTER);
-        b.setPadding(0, 0, 0, 0);
+        b.setClickable(true);
         GradientDrawable body = shapeBg(22, translucent(R.color.tuyin_card, CARD_ALPHA));
         body.setStroke(dp(1), accent);
         b.setBackground(shadowWrap(body, 22, 4));
@@ -735,14 +733,25 @@ public class MainActivity extends Activity {
         return shadowWrap(shapeBg(radiusDp, fillColor), radiusDp, depthDp);
     }
 
-    /** 将任意圆角主体包装成带圆角投影的背景。 */
+    /**
+     * 圆角渐变投影：5 层 LayerDrawable（4 层阴影从外到内渐深 + 主体）。
+     * 主体向右下内缩 depthDp；阴影层 inset 阶梯递减，右/下边缘呈
+     * 由深到浅的柔和渐变，投影 100% 跟随圆角，无均匀灰条分界线。
+     */
     private Drawable shadowWrap(GradientDrawable body, int radiusDp, int depthDp) {
-        GradientDrawable outer = shapeBg(radiusDp, Color.argb(16, 0, 0, 0));
-        GradientDrawable inner = shapeBg(radiusDp, Color.argb(30, 0, 0, 0));
-        LayerDrawable ld = new LayerDrawable(new Drawable[] { outer, inner, body });
         int d = dp(depthDp);
-        ld.setLayerInset(1, 0, 0, d * 2 / 3, d * 2 / 3);
-        ld.setLayerInset(2, 0, 0, d, d);
+        int[] alphas = { 10, 18, 26, 36 };
+        Drawable[] layers = new Drawable[5];
+        for (int i = 0; i < 4; i++) {
+            layers[i] = shapeBg(radiusDp, Color.argb(alphas[i], 0, 0, 0));
+        }
+        layers[4] = body;
+        LayerDrawable ld = new LayerDrawable(layers);
+        for (int i = 0; i < 4; i++) {
+            int inset = d * (3 - i) / 4;
+            ld.setLayerInset(i, 0, 0, inset, inset);
+        }
+        ld.setLayerInset(4, 0, 0, d, d);
         return ld;
     }
 
