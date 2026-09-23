@@ -36,7 +36,7 @@ $bt = "D:\files\Desk\work\tank-github\rac-hide-main\android-tools"
 $jdk = "$bt\jdk\jdk-17.0.2\bin"
 $app = "D:\files\Desk\work\tank-github\rac-hide-main\android\app"
 
-# 0. 页面更新后重新生成 assets/index.html
+# 0. 从 gui/ 源码重新生成 assets/index.html（克隆后可重建，无需提交构建产物）
 python android\prep_assets.py
 
 # 1. aapt：打包资源/清单/资产 并生成 R.java
@@ -72,7 +72,7 @@ android/
     res/drawable/             圆角卡片、分段标签、启动图标（隐字标）
     assets/index.html         自包含工作台页面（构建时生成）
     build/                    构建产物与最终 APK
-  prep_assets.py              从 gui/_deploy 生成 assets/index.html
+  prep_assets.py              从 gui/ 源码内联生成 assets/index.html（克隆后可重建）
   add_dex.py                  把 classes.dex 写入未签名 APK
   gen_tuyin_icon.py           生成「隐」字启动图标
 ```
