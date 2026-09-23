@@ -31,7 +31,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.Base64;
 
-/** 图隐 — MIUI X 风格主界面：大标题 + 标语 + 圆形「关于」入口 + 分段标签 + 圆角卡片工作台。 */
+/** 图隐 — MIUI X 风格主界面：大标题 + 标语 + 圆形「关于」入口 + 底部导航 + 圆角卡片工作台。 */
 public class MainActivity extends Activity {
 
     private static final int REQ_PICK_IMAGE = 1001;
@@ -107,27 +107,6 @@ public class MainActivity extends Activity {
 
         root.addView(header);
 
-        // ---- 分段标签：嵌入 / 提取（MIUI X segmented）----
-        LinearLayout seg = new LinearLayout(this);
-        seg.setOrientation(LinearLayout.HORIZONTAL);
-        seg.setGravity(android.view.Gravity.CENTER);
-        GradientDrawable segBg = new GradientDrawable();
-        segBg.setColor(getColor(R.color.tuyin_seg_bg));
-        segBg.setCornerRadius(dp(24));
-        seg.setBackground(segBg);
-        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(46));
-        sp.setMargins(dp(24), 0, dp(24), dp(14));
-        seg.setLayoutParams(sp);
-
-        segEmbed = makeSegItem(getString(R.string.tab_embed));
-        segExtract = makeSegItem(getString(R.string.tab_extract));
-        segEmbed.setOnClickListener(v -> switchTab(0));
-        segExtract.setOnClickListener(v -> switchTab(1));
-        seg.addView(segEmbed, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
-        seg.addView(segExtract, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
-        root.addView(seg);
-
         // ---- 工作台卡片容器 + WebView ----
         FrameLayout cardBox = new FrameLayout(this);
         GradientDrawable cardBg = new GradientDrawable();
@@ -141,6 +120,8 @@ public class MainActivity extends Activity {
         cardBox.setPadding(dp(6), dp(6), dp(6), dp(6));
 
         web = new WebView(this);
+        // 页面背景透明：让 app 的瓷白底色透出，弱化网页感
+        web.setBackgroundColor(Color.TRANSPARENT);
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
         s.setDomStorageEnabled(true);
@@ -179,6 +160,27 @@ public class MainActivity extends Activity {
         cardBox.addView(web, new FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         root.addView(cardBox);
+
+        // ---- 底部导航：嵌入 / 提取（MIUI X 底部标签）----
+        LinearLayout seg = new LinearLayout(this);
+        seg.setOrientation(LinearLayout.HORIZONTAL);
+        seg.setGravity(android.view.Gravity.CENTER);
+        GradientDrawable segBg = new GradientDrawable();
+        segBg.setColor(getColor(R.color.tuyin_seg_bg));
+        segBg.setCornerRadius(dp(24));
+        seg.setBackground(segBg);
+        LinearLayout.LayoutParams sp = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52));
+        sp.setMargins(dp(24), dp(10), dp(24), dp(14));
+        seg.setLayoutParams(sp);
+
+        segEmbed = makeSegItem(getString(R.string.tab_embed));
+        segExtract = makeSegItem(getString(R.string.tab_extract));
+        segEmbed.setOnClickListener(v -> switchTab(0));
+        segExtract.setOnClickListener(v -> switchTab(1));
+        seg.addView(segEmbed, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        seg.addView(segExtract, new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1));
+        root.addView(seg);
 
         setContentView(root);
         web.loadUrl("file:///android_asset/index.html");
