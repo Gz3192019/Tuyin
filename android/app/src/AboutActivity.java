@@ -133,6 +133,9 @@ public class AboutActivity extends Activity {
         foot.setGravity(Gravity.CENTER);
         foot.setPadding(0, dp(24), 0, 0);
         content.addView(foot);
+
+        // 关键：必须把构建好的视图树挂到窗口，否则关于页空白
+        setContentView(root);
     }
 
     /* ------------------------------------------------------------------ *
