@@ -3,7 +3,8 @@
 import zlib, struct, os, math
 from PIL import Image, ImageDraw, ImageFont
 
-OUT = r"D:\files\Desk\work\tank-github\rac-hide-main\android\app\res\drawable\ic_launcher.png"
+HERE = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(HERE, "app", "res", "drawable", "ic_launcher.png")
 SIZE = 512
 
 def lerp(a, b, t):
@@ -27,9 +28,24 @@ for y in range(SIZE):
     gd.line([(0, y), (SIZE, y)], fill=(r, g, b, 255))
 img.paste(grad, (0, 0), mask)
 
-# 白色「隐」字
-font_path = r"C:\Windows\Fonts\msyh.ttc"
-font = ImageFont.truetype(font_path, 300)
+# 白色「隐」字（跨平台字体查找，找不到用内置默认）
+FONT_CANDIDATES = [
+    r"C:\Windows\Fonts\msyh.ttc",
+    r"C:\Windows\Fonts\msyhbd.ttc",
+    r"C:\Windows\Fonts\simhei.ttf",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+]
+font = None
+for fp in FONT_CANDIDATES:
+    if os.path.exists(fp):
+        try:
+            font = ImageFont.truetype(fp, 300)
+            break
+        except Exception:
+            pass
+if font is None:
+    font = ImageFont.load_default()
 bbox = d.textbbox((0, 0), "隐", font=font)
 tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
 tx = (SIZE - tw) // 2 - bbox[0]
