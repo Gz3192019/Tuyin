@@ -99,9 +99,14 @@ async function downloadImageData(imageData, filename) {
     c.getContext('2d').putImageData(
       new ImageData(imageData.data, imageData.width, imageData.height), 0, 0);
     try {
-      window.TuyinBridge.savePng(c.toDataURL('image/png'), filename);
+      const dataUrl = c.toDataURL('image/png');
+      window.TuyinBridge.savePng(dataUrl, filename);
       return;
-    } catch (e) { /* fall through to browser download */ }
+    } catch (e) {
+      // 原生保存失败：明确反馈，不落入 WebView 里无效的浏览器下载
+      try { window.TuyinBridge.showToast('保存失败，请重试'); } catch (_) { }
+      return;
+    }
   }
   const blob = await imageDataToBlob(imageData, 'image/png');
   const url = URL.createObjectURL(blob);
