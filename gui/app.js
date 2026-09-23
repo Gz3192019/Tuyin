@@ -91,6 +91,18 @@ function hideProgress(id) { $(id).classList.remove('active'); }
 function nextFrame() { return new Promise((resolve) => setTimeout(resolve, 30)); }
 
 async function downloadImageData(imageData, filename) {
+  // 原生壳（Android）：把 PNG 交给 TuyinBridge 存入相册
+  if (window.TuyinBridge) {
+    const c = document.createElement('canvas');
+    c.width = imageData.width;
+    c.height = imageData.height;
+    c.getContext('2d').putImageData(
+      new ImageData(imageData.data, imageData.width, imageData.height), 0, 0);
+    try {
+      window.TuyinBridge.savePng(c.toDataURL('image/png'), filename);
+      return;
+    } catch (e) { /* fall through to browser download */ }
+  }
   const blob = await imageDataToBlob(imageData, 'image/png');
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -259,17 +271,14 @@ if (themeToggleEl) {
 /* ------------------------------------------------------------------ *
  * 标签页
  * ------------------------------------------------------------------ */
-function switchTab(name) {
-  document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
-  document
-    .querySelectorAll('.panel')
-    .forEach((panel) => panel.classList.toggle('hidden', panel.id !== 'panel-' + name));
-}
-
 document.querySelectorAll('.tab').forEach((tab) => {
-  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('active', t === tab));
+    document
+      .querySelectorAll('.panel')
+      .forEach((panel) => panel.classList.toggle('hidden', panel.id !== 'panel-' + tab.dataset.tab));
+  });
 });
-window.__switchTab = switchTab;
 
 /* ------------------------------------------------------------------ *
  * 输入事件
@@ -529,5 +538,19 @@ $('resetExtractBtn').addEventListener('click', () => {
 
 /* ------------------------------------------------------------------ */
 initTheme();
+
+// 原生壳（Android）：下载按钮改为「保存到相册」，下载即存相册
+if (window.TuyinBridge) {
+  const androidLabels = {
+    downloadStegoBtn: '保存隐写图到相册',
+    downloadSecretBtn: '保存秘密图到相册',
+    downloadRecoveredBtn: '保存恢复图到相册',
+  };
+  for (const [id, label] of Object.entries(androidLabels)) {
+    const btn = document.getElementById(id);
+    if (btn) btn.textContent = label;
+  }
+}
+
 refreshAll();
 window.__racBooted = true;
