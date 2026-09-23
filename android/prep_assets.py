@@ -79,6 +79,22 @@ def build():
     html = re.sub(r'<link rel="manifest"[^>]*>\s*', "", html)
     html = re.sub(r'<link rel="apple-touch-icon"[^>]*>\s*', "", html)
 
+    # 3.5. Inject the in-app native style: transparent page background so
+    #       the app's porcelain-white shows through, hide web-only chrome
+    #       (header/footer/tabs handled by the native bottom nav), and
+    #       flatten web cards so controls read as native MIUI components.
+    native_style = (
+        '<style id="tuyin-native">\n'
+        'body{background:transparent!important}\n'
+        '.bg-glow{display:none!important}\n'
+        '.site-header,.site-footer,.tabs,.boot-warn{display:none!important}\n'
+        '.card{background:transparent!important;border-color:transparent!important;box-shadow:none!important}\n'
+        '.drop{border-style:solid!important;background:var(--panel)!important}\n'
+        '.sim-card,.manual-box{background:transparent!important}\n'
+        '</style>'
+    )
+    html = html.replace('</head>', native_style + '</head>', 1)
+
     # 4. Write assets/index.html.
     os.makedirs(os.path.join(APK, "assets"), exist_ok=True)
     out_path = os.path.join(APK, "assets", "index.html")
