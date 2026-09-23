@@ -35,24 +35,7 @@
 </header>
 
 <main>
-  <section class="hero">
-    <p class="eyebrow">Robust DCT Steganography · 交互工作台</p>
-    <h1>把一张图，藏进另一张图。</h1>
-    <p class="lead">
-      秘密图先压缩为 JPEG，再调制进封面图 DCT 低频系数的<b>差值关系</b>里，
-      得到视觉上几乎无差别的隐写图——它经得起平台 JPEG/WebP 重压缩与等比缩放的折腾。
-      所有计算都在本地浏览器完成，不上传任何图片。
-    </p>
-    <ul class="badges">
-      <li>零依赖</li>
-      <li>盲提取</li>
-      <li>抗缩放</li>
-      <li>全程本地</li>
-      <li>GPL-3.0</li>
-    </ul>
-  </section>
-
-  <div class="tabs" role="tablist" aria-label="模式">
+<div class="tabs" role="tablist" aria-label="模式">
     <button class="tab active" data-tab="embed" role="tab">嵌入</button>
     <button class="tab" data-tab="extract" role="tab">提取</button>
   </div>
@@ -279,85 +262,6 @@
         <div class="canvas-wrap"><canvas id="extractedCanvas"></canvas></div>
         <p class="meta" id="extractMeta"></p>
       </figure>
-    </div>
-  </section>
-
-  <!-- ===================== 工作原理 ===================== -->
-  <section class="how">
-    <h2>工作原理</h2>
-    <p class="how-lead">
-      JPEG 会独立量化每个 DCT 系数，绝对值不稳定；但量化步长相近的两个系数的<b>差值符号</b>是稳定的。
-      RAC-Hide 用「C1 − C2 的符号」承载 1 个比特，并主动把差值推离零点（自适应边距），
-      再叠加 Reed–Solomon 纠错与全局交织，让载荷扛过重压缩与缩放。
-    </p>
-
-    <div class="flow" aria-label="嵌入与提取管线示意图">
-      <div class="flow-lane">
-        <span class="flow-lane-tag">嵌入</span>
-        <div class="flow-steps">
-          <div class="fstep">秘密图</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">JPEG 压缩</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">RS 纠错 + 交织</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">封面 DCT 系数对调制</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">IDCT → 隐写 PNG</div>
-        </div>
-      </div>
-      <div class="flow-lane">
-        <span class="flow-lane-tag">提取</span>
-        <div class="flow-steps">
-          <div class="fstep">隐写图（任意缩放）</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">读取空间标尺恢复尺寸</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">DCT 系数差解码</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">RS 解码 + 校验</div>
-          <svg class="farrow" viewBox="0 0 24 24" width="20" height="20"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M4 12h14m-5-5l5 5-5 5"/></svg>
-          <div class="fstep">JPEG → 秘密图</div>
-        </div>
-      </div>
-      <p class="flow-note">示意图 · 标尺藏在色度通道中，用于抗等比缩放</p>
-    </div>
-
-    <div class="preset-grid">
-      <div class="preset-card">
-        <span class="preset-name">容量优先</span>
-        <span class="preset-params mono">ppb 6 · nsym 32 · repeat 1</span>
-        <p>最大、最清晰的秘密图，抗攻击能力最弱。</p>
-      </div>
-      <div class="preset-card">
-        <span class="preset-name">均衡</span>
-        <span class="preset-params mono">ppb 2 · nsym 48 · repeat 1</span>
-        <p>推荐默认：视觉隐蔽与抗压缩兼顾。</p>
-      </div>
-      <div class="preset-card">
-        <span class="preset-name">抗压缩</span>
-        <span class="preset-params mono">ppb 1 · nsym 48 · repeat 3</span>
-        <p>对压缩与缩放最稳健，容量最小。</p>
-      </div>
-    </div>
-
-    <div class="card how-card">
-      <h3>参数说明</h3>
-      <div class="param-table-wrap">
-        <table class="param-table">
-          <colgroup><col style="width:26%"><col style="width:74%"></colgroup>
-          <tbody>
-            <tr><th>ppb</th><td>每块使用的系数对数量：容量线性上升，单比特边距被摊薄</td></tr>
-            <tr><th>repeat</th><td>每个编码比特的重复写入次数：随机错误容错上升，容量同倍下降</td></tr>
-            <tr><th>nsym</th><td>Reed–Solomon 纠错符号数：纠错更强，载荷相应缩小</td></tr>
-            <tr><th>marginMin / Gain / Max</th><td>自适应边距下限 / 纹理块放大系数 / 上限：越大约稳健、也越显眼</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <h3>容量公式</h3>
-      <pre class="formula mono">total slots = (W/8) · (H/8) · ppb
-codewords   = ⌊total slots / 2040⌋
-capacity    = ⌊codewords / repeat⌋ · (255 − nsym) − 11</pre>
     </div>
   </section>
 </main>
