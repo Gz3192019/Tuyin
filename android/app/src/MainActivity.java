@@ -29,7 +29,7 @@ import android.widget.Toast;
 
 /**
  * 图隐 — 原生隐写工作台。
- * MIUI X 风格：瓷白底、圆角卡片、悬浮导航（未选中半透明）。
+ * MIUI X 风格：瓷白底、圆角卡片+投影、悬浮导航（未选中半透明）。
  * 嵌入/提取全部由本地 Java 算法完成（与上游 JS 实现互通）。
  */
 public class MainActivity extends Activity {
@@ -59,9 +59,9 @@ public class MainActivity extends Activity {
     private ImageView coverBoxImg;
     private ImageView secretBoxImg;
     private ImageView stegoBoxImg;
-    private TextView coverBoxText;
-    private TextView secretBoxText;
-    private TextView stegoBoxText;
+    private View coverBoxText;
+    private View secretBoxText;
+    private View stegoBoxText;
     private TextView capacityText;
     private ProgressBar capacityBar;
     private TextView embedStatus;
@@ -151,7 +151,7 @@ public class MainActivity extends Activity {
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
-        content.setPadding(dp(16), dp(8), dp(16), dp(96));
+        content.setPadding(dp(16), dp(8), dp(16), dp(112));
         scroll.addView(content);
 
         // ================ 嵌入面板 ================
@@ -167,19 +167,19 @@ public class MainActivity extends Activity {
 
         LinearLayout coverBox = makeUploadBox(card, primary, "封面图 · 宿主", v -> pick(PICK_COVER));
         LinearLayout secretBox = makeUploadBox(card, primary, "秘密图 · 被隐藏", v -> pick(PICK_SECRET));
-        uploadRow.addView(coverBox, new LinearLayout.LayoutParams(0, dp(170), 1f));
-        LinearLayout.LayoutParams secretLp = new LinearLayout.LayoutParams(0, dp(170), 1f);
+        uploadRow.addView(coverBox, new LinearLayout.LayoutParams(0, dp(190), 1f));
+        LinearLayout.LayoutParams secretLp = new LinearLayout.LayoutParams(0, dp(190), 1f);
         secretLp.leftMargin = dp(10);
         uploadRow.addView(secretBox, secretLp);
 
-        coverBoxText = (TextView) coverBox.getTag(R.id.placeholder);
+        coverBoxText = (View) coverBox.getTag(R.id.placeholder);
         coverBoxImg = (ImageView) coverBox.getTag(R.id.preview);
-        secretBoxText = (TextView) secretBox.getTag(R.id.placeholder);
+        secretBoxText = (View) secretBox.getTag(R.id.placeholder);
         secretBoxImg = (ImageView) secretBox.getTag(R.id.preview);
 
         // 容量条
         LinearLayout capCard = makeCard(card);
-        panelEmbed.addView(capCard, cardLp(0, dp(10)));
+        panelEmbed.addView(capCard, cardLp(0, dp(12)));
 
         LinearLayout capTitleRow = new LinearLayout(this);
         capTitleRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -212,7 +212,7 @@ public class MainActivity extends Activity {
 
         // 封面增强
         LinearLayout enhanceCard = makeCard(card);
-        panelEmbed.addView(enhanceCard, cardLp(0, dp(10)));
+        panelEmbed.addView(enhanceCard, cardLp(0, dp(12)));
 
         LinearLayout enhanceRow = new LinearLayout(this);
         enhanceRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -236,7 +236,7 @@ public class MainActivity extends Activity {
 
         // 画质档位
         LinearLayout tierCard = makeCard(card);
-        panelEmbed.addView(tierCard, cardLp(0, dp(10)));
+        panelEmbed.addView(tierCard, cardLp(0, dp(12)));
 
         LinearLayout tierTitleRow = new LinearLayout(this);
         tierTitleRow.setOrientation(LinearLayout.HORIZONTAL);
@@ -343,12 +343,12 @@ public class MainActivity extends Activity {
         LinearLayout stegoBox = makeUploadBox(card, primary, "隐写图 · 要解密的图片", v -> pick(PICK_STEGO));
         panelExtract.addView(stegoBox, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(170)));
-        stegoBoxText = (TextView) stegoBox.getTag(R.id.placeholder);
+        stegoBoxText = (View) stegoBox.getTag(R.id.placeholder);
         stegoBoxImg = (ImageView) stegoBox.getTag(R.id.preview);
         stegoBoxImg.setVisibility(View.GONE);
 
         LinearLayout sizeCard = makeCard(card);
-        panelExtract.addView(sizeCard, cardLp(0, dp(10)));
+        panelExtract.addView(sizeCard, cardLp(0, dp(12)));
 
         TextView sizeLabel = new TextView(this);
         sizeLabel.setText("原图尺寸（可选，恢复缩放）");
@@ -452,11 +452,12 @@ public class MainActivity extends Activity {
     private LinearLayout makeUploadBox(int card, int primary, String hint, View.OnClickListener l) {
         LinearLayout box = new LinearLayout(this);
         box.setOrientation(LinearLayout.VERTICAL);
+        box.setGravity(Gravity.CENTER);
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(card);
-        shape.setCornerRadius(dp(16));
-        shape.setStroke(dp(1), color(R.color.tuyin_seg_line));
+        shape.setCornerRadius(dp(20));
         box.setBackground(shape);
+        box.setElevation(dp(6));
         box.setClickable(true);
         box.setOnClickListener(l);
 
@@ -466,15 +467,48 @@ public class MainActivity extends Activity {
         box.addView(preview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // 上传引导：淡蓝圆钮 + 主提示 + 副提示
+        LinearLayout iconWrap = new LinearLayout(this);
+        iconWrap.setOrientation(LinearLayout.VERTICAL);
+        iconWrap.setGravity(Gravity.CENTER);
+
+        TextView icon = new TextView(this);
+        icon.setText("＋");
+        icon.setTextColor(card);
+        icon.setTextSize(24);
+        icon.setTypeface(null, Typeface.BOLD);
+        icon.setGravity(Gravity.CENTER);
+        GradientDrawable circle = new GradientDrawable();
+        circle.setShape(GradientDrawable.OVAL);
+        circle.setColor(primary);
+        icon.setBackground(circle);
+        LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(52), dp(52));
+        iconLp.bottomMargin = dp(10);
+        iconWrap.addView(icon, iconLp);
+
         TextView placeholder = new TextView(this);
         placeholder.setText(hint);
-        placeholder.setTextColor(primary);
+        placeholder.setTextColor(color(R.color.tuyin_text));
         placeholder.setTextSize(13);
+        placeholder.setTypeface(null, Typeface.BOLD);
         placeholder.setGravity(Gravity.CENTER);
-        box.addView(placeholder, new LinearLayout.LayoutParams(
+        iconWrap.addView(placeholder, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        TextView subHint = new TextView(this);
+        subHint.setText("点击选择图片");
+        subHint.setTextColor(color(R.color.tuyin_sub));
+        subHint.setTextSize(11);
+        subHint.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams subLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        subLp.topMargin = dp(4);
+        iconWrap.addView(subHint, subLp);
+
+        box.addView(iconWrap, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        box.setTag(R.id.placeholder, placeholder);
+        box.setTag(R.id.placeholder, iconWrap);
         box.setTag(R.id.preview, preview);
         return box;
     }
@@ -484,9 +518,10 @@ public class MainActivity extends Activity {
         cardView.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(card);
-        shape.setCornerRadius(dp(16));
+        shape.setCornerRadius(dp(18));
         cardView.setBackground(shape);
-        cardView.setPadding(dp(14), dp(12), dp(14), dp(12));
+        cardView.setElevation(dp(5));
+        cardView.setPadding(dp(16), dp(14), dp(16), dp(14));
         return cardView;
     }
 
@@ -495,9 +530,10 @@ public class MainActivity extends Activity {
         wrapper.setOrientation(LinearLayout.VERTICAL);
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(card);
-        shape.setCornerRadius(dp(14));
+        shape.setCornerRadius(dp(16));
         wrapper.setBackground(shape);
-        wrapper.setPadding(dp(6), dp(6), dp(6), dp(6));
+        wrapper.setElevation(dp(4));
+        wrapper.setPadding(dp(8), dp(8), dp(8), dp(8));
 
         TextView lab = new TextView(this);
         lab.setText(label);
@@ -508,8 +544,10 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         img.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        wrapper.addView(img, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        LinearLayout.LayoutParams imgLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+        imgLp.topMargin = dp(6);
+        wrapper.addView(img, imgLp);
         return wrapper;
     }
 
@@ -522,8 +560,9 @@ public class MainActivity extends Activity {
         b.setAllCaps(false);
         GradientDrawable shape = new GradientDrawable();
         shape.setColor(primary);
-        shape.setCornerRadius(dp(22));
+        shape.setCornerRadius(dp(24));
         b.setBackground(shape);
+        b.setElevation(dp(7));
         return b;
     }
 
@@ -538,6 +577,7 @@ public class MainActivity extends Activity {
         shape.setCornerRadius(dp(22));
         shape.setStroke(dp(1), accent);
         b.setBackground(shape);
+        b.setElevation(dp(4));
         return b;
     }
 
@@ -684,7 +724,7 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void showPreview(ImageView img, TextView placeholder, RacCore.ImageData data) {
+    private void showPreview(ImageView img, View placeholder, RacCore.ImageData data) {
         Bitmap bmp = RacImages.imageDataToBitmap(data);
         img.setImageBitmap(bmp);
         img.setVisibility(View.VISIBLE);
