@@ -187,6 +187,11 @@ public class MainActivity extends Activity {
         scroll.addView(content, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // 顶部透明占位：把功能区顶到渐隐层下缘之下（初始不遮挡）
+        View topSpacer = new View(this);
+        content.addView(topSpacer, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+
         // ================ 嵌入面板 ================
         panelEmbed = new LinearLayout(this);
         panelEmbed.setOrientation(LinearLayout.VERTICAL);
@@ -839,6 +844,10 @@ public class MainActivity extends Activity {
             ViewGroup parent = (ViewGroup) getParent();
             if (parent == null || parent.getChildCount() == 0) return;
             View stack = parent.getChildAt(0);
+            if (!(stack instanceof ScrollView)) return;
+            ScrollView sv = (ScrollView) stack;
+            View content = sv.getChildCount() > 0 ? sv.getChildAt(0) : null;
+            if (content == null) return;
             int w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
             int sw = Math.max(1, w / 5), sh = Math.max(1, h / 5);
@@ -846,9 +855,13 @@ public class MainActivity extends Activity {
                 small = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
             }
             Canvas c = new Canvas(small);
-            c.translate(-getLeft() / 5f, -getTop() / 5f);
+            // 滚动补偿：ScrollView 滚动 = 内容平移，实时读取 scrollY（不依赖显示列表缓存）
+            c.translate(-sv.getScrollX(), -sv.getScrollY());
+            // 对齐模糊区（全尺寸空间）
+            c.translate(-getLeft(), -getTop());
+            // 缩略采样
             c.scale(1f / 5f, 1f / 5f);
-            stack.draw(c);
+            content.draw(c);
             canvas.drawBitmap(small, null, new android.graphics.Rect(0, 0, w, h), blurPaint);
             super.onDraw(canvas);
         }
@@ -885,14 +898,17 @@ public class MainActivity extends Activity {
         return rippleWrap(shapeBg(radiusDp, fillColor), radiusDp, depthDp);
     }
 
-    /** 液态玻璃胶囊：半透明底 + 左上高光（无投影）。 */
+    /** 液态玻璃胶囊：半透明底 + 左上高光 + 弧形描边（无投影）。 */
     private Drawable glassBg(int radiusDp, int fillColor) {
         GradientDrawable body = shapeBg(radiusDp, fillColor);
         GradientDrawable gloss = new GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 new int[] { Color.argb(55, 255, 255, 255), Color.argb(0, 255, 255, 255) });
         gloss.setCornerRadius(dp(radiusDp));
-        return new LayerDrawable(new Drawable[] { body, gloss });
+        // 弧形描边层（透明底 + 白色半透明轮廓，置于最上层）
+        GradientDrawable outline = shapeBg(radiusDp, Color.TRANSPARENT);
+        outline.setStroke(dp(1), Color.argb(70, 255, 255, 255));
+        return new LayerDrawable(new Drawable[] { body, gloss, outline });
     }
 
     /** 圆角水波纹背景（Material ripple + 轻投影）。 */
