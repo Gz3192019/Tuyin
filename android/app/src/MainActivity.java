@@ -530,8 +530,8 @@ public class MainActivity extends Activity {
 
         btnEmbed.setOnClickListener(v -> doEmbed());
         btnExtract.setOnClickListener(v -> doExtract());
-        btnSaveStego.setOnClickListener(v -> saveBitmap(stegoData, "tuyin-stego", "image/png", 100));
-        btnSaveExtracted.setOnClickListener(v -> saveBitmap(null, "tuyin-extracted", "image/png", 100));
+        btnSaveStego.setOnClickListener(v -> saveBitmapData(stegoData, "tuyin-stego", "image/png", 100));
+        btnSaveExtracted.setOnClickListener(v -> saveBitmapData(null, "tuyin-extracted", "image/png", 100));
         btnResetEmbed.setOnClickListener(v -> resetEmbed());
         btnResetExtract.setOnClickListener(v -> resetExtract());
 
@@ -1469,7 +1469,7 @@ public class MainActivity extends Activity {
         toast(ok ? getString(R.string.saved_to_gallery) : getString(R.string.save_failed));
     }
 
-    private void saveBitmap(RacCore.ImageData imageData, String name, String mime, int quality) {
+    private void saveBitmapData(RacCore.ImageData imageData, String name, String mime, int quality) {
         Bitmap bmp = null;
         if (imageData != null) {
             bmp = RacImages.imageDataToBitmap(imageData);
