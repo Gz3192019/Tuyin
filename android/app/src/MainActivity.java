@@ -45,6 +45,9 @@ import java.util.function.IntConsumer;
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
  * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
+ * v1.7：
+ *  - 新增「开始嵌入」处理进度条：大图嵌入耗时较长时，蓝色进度条 + 百分比实时反馈
+ *  - 嵌入进度由 RacCore.embed 分阶段计权上报（标尺生成 → DCT 块嵌入 → 输出重建）
  * v1.6：
  *  - 修复大封面增强（4096/自定义）OOM 闪退：封面增强改在后台线程执行；
  *    解码按目标长边采样（不再全尺寸驻留）；缩放中间位图用后即回收；自定义放大加 24M 像素护栏；
@@ -129,6 +132,8 @@ public class MainActivity extends Activity {
     private ProgressBar capacityBar;
     private TextView payloadInfo;
     private TextView embedStatus;
+    private ProgressBar embedProgress;
+    private TextView embedProgressText;
     private TextView extractStatus;
     private SeekBar tierSlider;
     private TextView tierName;
@@ -395,6 +400,34 @@ public class MainActivity extends Activity {
         embedStatus.setTextSize(12);
         embedStatus.setGravity(Gravity.CENTER);
         panelEmbed.addView(embedStatus, wrapLp(0, Gravity.CENTER));
+
+        // ---- 嵌入进度条（大图嵌入耗时较长，实时反馈处理进度） ----
+        embedProgress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        embedProgress.setMax(100);
+        embedProgress.setProgress(0);
+        GradientDrawable epTrack = new GradientDrawable();
+        epTrack.setColor(translucent(R.color.tuyin_seg_bg, 210));
+        epTrack.setCornerRadius(dp(4));
+        GradientDrawable epFill = new GradientDrawable();
+        epFill.setColor(primary);
+        epFill.setCornerRadius(dp(4));
+        LayerDrawable epLayers = new LayerDrawable(new Drawable[] { epTrack, epFill });
+        epLayers.setId(0, android.R.id.background);
+        epLayers.setId(1, android.R.id.progress);
+        embedProgress.setProgressDrawable(epLayers);
+        embedProgress.setVisibility(View.GONE);
+        LinearLayout.LayoutParams epLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
+        epLp.topMargin = dp(8);
+        panelEmbed.addView(embedProgress, epLp);
+
+        embedProgressText = new TextView(this);
+        embedProgressText.setText("");
+        embedProgressText.setTextColor(sub);
+        embedProgressText.setTextSize(11);
+        embedProgressText.setGravity(Gravity.CENTER);
+        embedProgressText.setVisibility(View.GONE);
+        panelEmbed.addView(embedProgressText, wrapLp(4, Gravity.CENTER));
 
         // ---- 隐写结果（全宽大卡，嵌入后显示，高度跟随图片比例） ----
         stegoResultBox = makeResultCard(card, "隐写结果", "嵌入完成后在这里显示");
@@ -1419,6 +1452,10 @@ public class MainActivity extends Activity {
         btnEmbed.setEnabled(false);
         embedStatus.setTextColor(color(R.color.tuyin_sub));
         embedStatus.setText("正在嵌入…");
+        embedProgress.setProgress(0);
+        embedProgress.setVisibility(View.VISIBLE);
+        embedProgressText.setText("0%");
+        embedProgressText.setVisibility(View.VISIBLE);
         new Thread(() -> {
             try {
                 byte[] jpeg = RacImages.fitSecretJpeg(secretData, cap, opts.secretMax);
@@ -1430,7 +1467,12 @@ public class MainActivity extends Activity {
                     return;
                 }
                 byte[] payload = RacCore.buildPayload(jpeg, opts);
-                RacCore.ImageData stego = RacCore.embed(coverData, payload, opts);
+                RacCore.ImageData stego = RacCore.embed(coverData, payload, opts, frac ->
+                        runOnUiThread(() -> {
+                            int pct = (int) Math.round(frac * 100);
+                            embedProgress.setProgress(pct);
+                            embedProgressText.setText(pct + "%");
+                        }));
                 payloadBytes = payload.length;
                 stegoData = stego;
                 final Bitmap bmp = RacImages.imageDataToBitmap(stego);
@@ -1439,6 +1481,8 @@ public class MainActivity extends Activity {
                             stegoResultArea, stegoResultAreaLp, RESULT_AREA_H,
                             stegoResultBox, stegoResultBox.getLayoutParams(), 36);
                     updateCapacityMeter();
+                    embedProgress.setProgress(100);
+                    embedProgressText.setText("100%");
                     embedStatus.setTextColor(Color.parseColor("#0086FF"));
                     embedStatus.setText("嵌入完成 " + bmp.getWidth() + "×" + bmp.getHeight()
                             + "，可保存隐写图、切“提取”验证或下滑“通道模拟”验证鲁棒性");
@@ -1450,7 +1494,11 @@ public class MainActivity extends Activity {
                     embedStatus.setText("嵌入失败：" + friendlyError(e));
                 });
             } finally {
-                runOnUiThread(() -> btnEmbed.setEnabled(true));
+                runOnUiThread(() -> {
+                    btnEmbed.setEnabled(true);
+                    embedProgress.setVisibility(View.GONE);
+                    embedProgressText.setVisibility(View.GONE);
+                });
             }
         }).start();
     }
