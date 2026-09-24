@@ -44,8 +44,11 @@ import java.util.function.IntConsumer;
 /**
  * 图隐 — 原生隐写工作台（Material 风格）。
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
- * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
+ * 图片区：上传框固定 4:3 长条显示，结果卡高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
+ * v2.0：
+ *  - 上传图片框（封面 / 秘密图 / 隐写图）改为固定 4:3 长条比例：不再随图片尺寸撑高，图片完整居中显示在框内
+ *  - 新增莫奈取色（Material You 动态壁纸取色）：Android 12+ 主色 / 强调色跟随系统壁纸主题，低版本回退默认蓝
  * v1.8：
  *  - 修复可用容量进度条 / 嵌入进度条「一整条蓝」：填充层改用 ClipDrawable 按进度裁剪，
  *    未嵌入时显示灰色轨道，嵌入后按占用率填充蓝色
@@ -184,7 +187,7 @@ public class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         int bg = color(R.color.tuyin_bg);
         int card = color(R.color.tuyin_card);
-        int primary = color(R.color.tuyin_primary);
+        int primary = themePrimary();
         int text = color(R.color.tuyin_text);
         int sub = color(R.color.tuyin_sub);
 
@@ -262,14 +265,14 @@ public class MainActivity extends Activity {
         content.addView(panelEmbed, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 封面图（全宽大卡，选图后高度跟随图片比例） ----
+        // ---- 封面图（全宽大卡，固定 4:3 长条） ----
         coverBox = makeImageCard(card, primary, "封面图 · 宿主", "点击选择要藏秘密图的封面", v -> pick(PICK_COVER));
         coverLp = imgCardLp(0);
         panelEmbed.addView(coverBox, coverLp);
         coverBoxText = (View) coverBox.getTag(R.id.placeholder);
         coverBoxImg = (ImageView) coverBox.getTag(R.id.preview);
 
-        // ---- 秘密图（全宽大卡） ----
+        // ---- 秘密图（全宽大卡，固定 4:3 长条） ----
         secretBox = makeImageCard(card, primary, "秘密图 · 被隐藏", "点击选择要藏进封面的图片", v -> pick(PICK_SECRET));
         secretLp = imgCardLp(GAP);
         panelEmbed.addView(secretBox, secretLp);
@@ -502,7 +505,7 @@ public class MainActivity extends Activity {
         content.addView(panelExtract, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 隐写图（全宽大卡） ----
+        // ---- 隐写图（全宽大卡，固定 4:3 长条） ----
         stegoBox = makeImageCard(card, primary, "隐写图 · 要解密的图片", "点击选择需要解密的图片", v -> pick(PICK_STEGO));
         stegoLp = imgCardLp(0);
         panelExtract.addView(stegoBox, stegoLp);
@@ -611,7 +614,7 @@ public class MainActivity extends Activity {
 
     /* ================= UI 构建工具 ================= */
 
-    /** 图片选择大卡：全宽、统一占位高度，选图后高度跟随图片比例。 */
+    /** 图片选择大卡：全宽、固定 4:3 长条，选图后图片完整居中显示在框内（不高撑卡片）。 */
     private LinearLayout makeImageCard(int card, int primary, String title, String subTitle,
                                        View.OnClickListener l) {
         LinearLayout box = new LinearLayout(this);
@@ -866,7 +869,7 @@ public class MainActivity extends Activity {
     private TextView makeSelectField(String[] labels, int defIndex, IntConsumer onChange) {
         TextView sel = new TextView(this);
         sel.setText(labels[defIndex]);
-        sel.setTextColor(color(R.color.tuyin_primary));
+        sel.setTextColor(themePrimary());
         sel.setTextSize(13);
         sel.setTypeface(null, Typeface.BOLD);
         sel.setGravity(Gravity.CENTER);
@@ -900,7 +903,7 @@ public class MainActivity extends Activity {
                 java.util.Arrays.asList(labels)) {
             @Override public android.view.View getView(int position, android.view.View convertView, android.view.ViewGroup parent) {
                 TextView tv = (TextView) super.getView(position, convertView, parent);
-                tv.setTextColor(color(R.color.tuyin_primary));
+                tv.setTextColor(themePrimary());
                 tv.setTextSize(13);
                 tv.setTypeface(null, Typeface.BOLD);
                 tv.setGravity(Gravity.CENTER);
@@ -1029,12 +1032,28 @@ public class MainActivity extends Activity {
         return et;
     }
 
-    /** 图片卡布局：全宽 + 占位高度 + 垂直间距。 */
+    /** 上传图片框固定 4:3 比例高度（内容区宽 = 屏宽 - 32dp，宽:高 = 4:3）。 */
+    private int imgCardH() {
+        int innerW = getResources().getDisplayMetrics().widthPixels - dp(32);
+        return (int) (innerW * 3f / 4f);
+    }
+
+    /** 图片卡布局：全宽 + 固定 4:3 框条 + 垂直间距。 */
     private LinearLayout.LayoutParams imgCardLp(int top) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(IMG_CARD_H));
+                ViewGroup.LayoutParams.MATCH_PARENT, imgCardH());
         lp.topMargin = dp(top);
         return lp;
+    }
+
+    /** 莫奈取色（Material You）：API 31+ 跟随系统壁纸动态主色，低版本回退默认蓝。 */
+    private int themePrimary() {
+        if (Build.VERSION.SDK_INT >= 31) {
+            try {
+                return getColor(android.R.color.system_accent1_500);
+            } catch (Throwable t) { /* 个别设备资源缺失则回退 */ }
+        }
+        return color(R.color.tuyin_primary);
     }
 
     /** 卡片布局：满宽 + 垂直间距。 */
@@ -1106,6 +1125,14 @@ public class MainActivity extends Activity {
                 }
             }
         });
+    }
+
+    /** 上传框固定 4:3 框内完整显示图片（FIT_CENTER），不高撑卡片。 */
+    private void showImageFixed(ImageView img, View placeholder, Bitmap bmp) {
+        if (bmp == null) return;
+        img.setImageBitmap(bmp);
+        img.setVisibility(View.VISIBLE);
+        if (placeholder != null) placeholder.setVisibility(View.GONE);
     }
 
     private abstract static class SimpleBar implements SeekBar.OnSeekBarChangeListener {
@@ -1199,7 +1226,7 @@ public class MainActivity extends Activity {
         int d = dp(depthDp);
         int[] alphas = { 2, 4, 6, 9 };
         GradientDrawable mask = shapeBg(radiusDp, Color.WHITE);
-        int primary = color(R.color.tuyin_primary);
+        int primary = themePrimary();
         RippleDrawable ripple = new RippleDrawable(
                 ColorStateList.valueOf(Color.argb(60, Color.red(primary), Color.green(primary), Color.blue(primary))),
                 body, mask);
@@ -1260,7 +1287,7 @@ public class MainActivity extends Activity {
         ImageView icon = (ImageView) item.getTag(R.id.navIcon);
         TextView label = (TextView) item.getTag(R.id.navLabel);
         GradientDrawable pillBg = (GradientDrawable) item.getTag(R.id.navPillBg);
-        int primary = color(R.color.tuyin_primary);
+        int primary = themePrimary();
         if (selected) {
             pillBg.setColor(Color.argb(32, Color.red(primary), Color.green(primary), Color.blue(primary)));
             icon.setColorFilter(primary, PorterDuff.Mode.SRC_IN);
@@ -1300,8 +1327,7 @@ public class MainActivity extends Activity {
                         final Bitmap bmp = RacImages.imageDataToBitmap(enhanced);
                         runOnUiThread(() -> {
                             coverData = enhanced;
-                            fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
-                                    coverBox, coverLp, 0);
+                            showImageFixed(coverBoxImg, coverBoxText, bmp);
                             payloadBytes = 0;
                             updateCapacityMeter();
                         });
@@ -1312,14 +1338,12 @@ public class MainActivity extends Activity {
             } else if (requestCode == PICK_SECRET) {
                 secretData = RacImages.decodeUri(this, uri, RacImages.SECRET_MAX);
                 Bitmap bmp = RacImages.imageDataToBitmap(secretData);
-                fitImage(secretBoxImg, secretBoxText, bmp, secretBox, secretLp, IMG_CARD_H,
-                        secretBox, secretLp, 0);
+                showImageFixed(secretBoxImg, secretBoxText, bmp);
                 updateCapacityMeter();
             } else if (requestCode == PICK_STEGO) {
                 stegoData = RacImages.decodeUri(this, uri, 0);
                 Bitmap bmp = RacImages.imageDataToBitmap(stegoData);
-                fitImage(stegoBoxImg, stegoBoxText, bmp, stegoBox, stegoLp, IMG_CARD_H,
-                        stegoBox, stegoLp, 0);
+                showImageFixed(stegoBoxImg, stegoBoxText, bmp);
             }
         } catch (Exception e) {
             toast("读取图片失败：" + e.getMessage());
@@ -1337,8 +1361,7 @@ public class MainActivity extends Activity {
                 final Bitmap bmp = RacImages.imageDataToBitmap(enhanced);
                 runOnUiThread(() -> {
                     coverData = enhanced;
-                    fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
-                            coverBox, coverLp, 0);
+                    showImageFixed(coverBoxImg, coverBoxText, bmp);
                     payloadBytes = 0;
                     updateCapacityMeter();
                 });
@@ -1724,12 +1747,12 @@ public class MainActivity extends Activity {
         coverBoxImg.setImageBitmap(null);
         coverBoxImg.setVisibility(View.GONE);
         coverBoxText.setVisibility(View.VISIBLE);
-        coverLp.height = dp(IMG_CARD_H);
+        coverLp.height = imgCardH();
         coverBox.requestLayout();
         secretBoxImg.setImageBitmap(null);
         secretBoxImg.setVisibility(View.GONE);
         secretBoxText.setVisibility(View.VISIBLE);
-        secretLp.height = dp(IMG_CARD_H);
+        secretLp.height = imgCardH();
         secretBox.requestLayout();
         stegoResultImg.setImageBitmap(null);
         stegoResultImg.setVisibility(View.GONE);
@@ -1765,7 +1788,7 @@ public class MainActivity extends Activity {
         stegoBoxImg.setImageBitmap(null);
         stegoBoxImg.setVisibility(View.GONE);
         stegoBoxText.setVisibility(View.VISIBLE);
-        stegoLp.height = dp(IMG_CARD_H);
+        stegoLp.height = imgCardH();
         stegoBox.requestLayout();
         extractResultImg.setImageBitmap(null);
         extractResultImg.setVisibility(View.GONE);

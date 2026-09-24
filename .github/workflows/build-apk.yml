@@ -13,7 +13,7 @@
 #   3) 兜底：临时 debug keystore（仅当以上都不可用时）。
 #
 # 更新日志：每次发版请更新仓库根 RELEASE_NOTES.md（按 "## v版本号" 分段），
-# Release 发布说明会自动截取对应版本的日志段落。
+# Release 发布说明会完整展示 RELEASE_NOTES.md 全文（含全部历史版本）。
 # 注意：RELEASE_NOTES.md 本身不在下方触发 paths 里，只改日志不会触发构建；
 # 请把日志与代码改动放在同一次 push（或手动 workflow_dispatch），构建才能读到新日志。
 name: Build APK
@@ -151,10 +151,10 @@ jobs:
           VER="${{ env.VER }}"
           TAG="v${VER}"
           APK="build/Tuyin-${VER}.apk"
-          # 更新日志：从 RELEASE_NOTES.md 按 "## v<版本>" 截取对应段落；找不到则用默认文案
+          # 更新日志：完整使用 RELEASE_NOTES.md 全文（含全部历史版本，便于用户查看完整迭代记录）；文件缺失时用默认文案
           NOTES=""
           if [ -f RELEASE_NOTES.md ]; then
-            NOTES="$(awk -v v="v${VER}" '$0 ~ "^## " v "([[:space:]]|$)" {p=1; next} p && /^## / {p=0} p {print}' RELEASE_NOTES.md)"
+            NOTES="$(cat RELEASE_NOTES.md)"
           fi
           if [ -z "$NOTES" ]; then
             NOTES="图隐 Tuyin v${VER} — RAC-Hide 图片隐写（原作者 tuoPzf）的 Android App 化版本。仅做安卓客户端封装与 UI 适配，隐写算法与原项目完全兼容，可互相解隐。本 APK 由 GitHub Actions 自动构建并发布。"
