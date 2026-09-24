@@ -13,6 +13,7 @@ import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -61,6 +62,28 @@ public final class RacImages {
                         default: rotation = 0;
                     }
                 }
+            }
+            if (rotation == 0) return src;
+            Matrix m = new Matrix();
+            m.postRotate(rotation);
+            return Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, true);
+        } catch (Exception e) {
+            return src;
+        }
+    }
+
+    /** 字节 JPEG 解码后应用 EXIF 旋转（提取结果方向保险）。 */
+    public static Bitmap applyExifRotationBytes(byte[] jpeg, Bitmap src) {
+        if (src == null) return src;
+        try {
+            ExifInterface exif = new ExifInterface(new ByteArrayInputStream(jpeg));
+            int ori = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL);
+            int rotation = 0;
+            switch (ori) {
+                case ExifInterface.ORIENTATION_ROTATE_90: rotation = 90; break;
+                case ExifInterface.ORIENTATION_ROTATE_180: rotation = 180; break;
+                case ExifInterface.ORIENTATION_ROTATE_270: rotation = 270; break;
+                default: rotation = 0;
             }
             if (rotation == 0) return src;
             Matrix m = new Matrix();
