@@ -182,117 +182,139 @@ public final class RacCore {
             slotBits[RacInterleave.slotForIndex(k, rmax)] = repeated[k];
         }
 
-        float[] rulerField = RacRuler.buildRulerField(width, height, width, height);
-        double[] rulerRgb = new double[width * height * 3];
-        double[] gray = new double[width * height];
-
-        for (int i = 0; i < width * height; i++) {
-            int r = data[i * 4] & 0xff;
-            int g = data[i * 4 + 1] & 0xff;
-            int b = data[i * 4 + 2] & 0xff;
-            double y = 0.299 * r + 0.587 * g + 0.114 * b;
-            double cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
-            double cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b + rulerField[i];
-            if (cb < 0) cb = 0;
-            else if (cb > 255) cb = 255;
-            double ncr = cr - 128;
-            double ncb = cb - 128;
-            double nr = y + 1.402 * ncr;
-            double ng = y - 0.344136 * ncb - 0.714136 * ncr;
-            double nb = y + 1.772 * ncb;
-            rulerRgb[i * 3] = nr;
-            rulerRgb[i * 3 + 1] = ng;
-            rulerRgb[i * 3 + 2] = nb;
-            gray[i] = 0.299 * nr + 0.587 * ng + 0.114 * nb;
-            if (reporter != null && i % width == width - 1) reporter.step(width);
-        }
-
+        // v1.9 分块流式：预构建 112x112 标尺格点（内存极小），逐块采样并计算灰度/标尺/输出，
+        // 消除原版 rulerField(float WxH)/rulerRgb(double 3xWxH)/gray(double WxH) 三个全图大数组，
+        // 内存峰值与图片尺寸解耦（仅剩 data 与 out 两份 byte[]），逐像素结果与原版完全一致。
+        double[] lattice = RacRuler.lattice(width, height);
         double room = 255 - 2 * o.marginMin;
         int blockSize = RacConstants.BLOCK_SIZE;
+        byte[] out = new byte[width * height * 4];
+        int blk = blockSize * blockSize;
+        double[] grayBlock = new double[blk];
+        double[] rgbBlockR = new double[blk];
+        double[] rgbBlockG = new double[blk];
+        double[] rgbBlockB = new double[blk];
+        double[][] block = new double[blockSize][blockSize];
+
         for (int by = 0; by < bh; by++) {
             for (int bx = 0; bx < bw; bx++) {
-                if (reporter != null) reporter.step(1);
                 int base = (by * bw + bx) * o.ppb;
                 boolean used = false;
                 for (int p = 0; p < o.ppb; p++) {
                     if (slotBits[base + p] >= 0) { used = true; break; }
                 }
-                if (!used) continue;
 
-                double[][] block = new double[blockSize][blockSize];
-                double bmn = Double.POSITIVE_INFINITY;
-                double bmx = Double.NEGATIVE_INFINITY;
+                // 1) 逐像素标尺 + 灰度（块级暂存，替代整图 rulerField/rulerRgb/gray）
                 for (int i = 0; i < blockSize; i++) {
+                    int py = by * blockSize + i;
                     for (int j = 0; j < blockSize; j++) {
-                        double v = gray[(by * blockSize + i) * width + (bx * blockSize + j)] - 128;
-                        block[i][j] = v;
-                        if (v < bmn) bmn = v;
-                        if (v > bmx) bmx = v;
+                        int px = bx * blockSize + j;
+                        int idx = py * width + px;
+                        int r = data[idx * 4] & 0xff;
+                        int g = data[idx * 4 + 1] & 0xff;
+                        int b = data[idx * 4 + 2] & 0xff;
+                        double y = 0.299 * r + 0.587 * g + 0.114 * b;
+                        double cr = 128 + 0.5 * r - 0.418688 * g - 0.081312 * b;
+                        double cb = 128 - 0.168736 * r - 0.331264 * g + 0.5 * b
+                                + RacRuler.sample(lattice, width, height, px, py);
+                        if (cb < 0) cb = 0;
+                        else if (cb > 255) cb = 255;
+                        double ncr = cr - 128;
+                        double ncb = cb - 128;
+                        double nr = y + 1.402 * ncr;
+                        double ng = y - 0.344136 * ncb - 0.714136 * ncr;
+                        double nb = y + 1.772 * ncb;
+                        int bi = i * blockSize + j;
+                        rgbBlockR[bi] = nr;
+                        rgbBlockG[bi] = ng;
+                        rgbBlockB[bi] = nb;
+                        grayBlock[bi] = 0.299 * nr + 0.587 * ng + 0.114 * nb;
                     }
                 }
-                if (bmx - bmn > room) {
-                    double mid = (bmn + bmx) / 2;
-                    double scale = room / (bmx - bmn);
+
+                // 2) DCT 嵌入（仅当本块有载荷位）
+                if (used) {
+                    double bmn = Double.POSITIVE_INFINITY;
+                    double bmx = Double.NEGATIVE_INFINITY;
                     for (int i = 0; i < blockSize; i++) {
                         for (int j = 0; j < blockSize; j++) {
-                            block[i][j] = mid + (block[i][j] - mid) * scale;
+                            double v = grayBlock[i * blockSize + j] - 128;
+                            block[i][j] = v;
+                            if (v < bmn) bmn = v;
+                            if (v > bmx) bmx = v;
+                        }
+                    }
+                    if (bmx - bmn > room) {
+                        double mid = (bmn + bmx) / 2;
+                        double scale = room / (bmx - bmn);
+                        for (int i = 0; i < blockSize; i++) {
+                            for (int j = 0; j < blockSize; j++) {
+                                block[i][j] = mid + (block[i][j] - mid) * scale;
+                            }
+                        }
+                    }
+
+                    double[][] coeffs = RacDct.dct2d(block);
+                    for (int p = 0; p < o.ppb; p++) {
+                        int bit = slotBits[base + p];
+                        if (bit < 0) continue;
+                        int[][] pair = RacConstants.COEFFICIENT_PAIRS[p];
+                        int[] a = pair[0];
+                        int[] bIdx = pair[1];
+                        double c1 = coeffs[a[0]][a[1]];
+                        double c2 = coeffs[bIdx[0]][bIdx[1]];
+                        double d = c1 - c2;
+                        double avgMag = (Math.abs(c1) + Math.abs(c2)) / 2;
+                        double margin = Math.min(Math.max(o.marginMin, o.marginGain * avgMag), o.marginMax);
+                        double target = bit == 1 ? margin : -margin;
+                        if (bit == 1 && d >= target) continue;
+                        if (bit == 0 && d <= target) continue;
+                        double delta = (target - d) / 2;
+                        coeffs[a[0]][a[1]] += delta;
+                        coeffs[bIdx[0]][bIdx[1]] -= delta;
+                    }
+
+                    double[][] modulated = RacDct.idct2d(coeffs);
+                    double mn = Double.POSITIVE_INFINITY;
+                    double mx = Double.NEGATIVE_INFINITY;
+                    for (int i = 0; i < blockSize; i++) {
+                        for (int j = 0; j < blockSize; j++) {
+                            double v = modulated[i][j];
+                            if (v < mn) mn = v;
+                            if (v > mx) mx = v;
+                        }
+                    }
+                    double shift = 0;
+                    if (mx > 127) shift = 127 - mx;
+                    else if (mn < -128) shift = -128 - mn;
+                    for (int i = 0; i < blockSize; i++) {
+                        for (int j = 0; j < blockSize; j++) {
+                            grayBlock[i * blockSize + j] = modulated[i][j] + shift + 128;
                         }
                     }
                 }
 
-                double[][] coeffs = RacDct.dct2d(block);
-                for (int p = 0; p < o.ppb; p++) {
-                    int bit = slotBits[base + p];
-                    if (bit < 0) continue;
-                    int[][] pair = RacConstants.COEFFICIENT_PAIRS[p];
-                    int[] a = pair[0];
-                    int[] bIdx = pair[1];
-                    double c1 = coeffs[a[0]][a[1]];
-                    double c2 = coeffs[bIdx[0]][bIdx[1]];
-                    double d = c1 - c2;
-                    double avgMag = (Math.abs(c1) + Math.abs(c2)) / 2;
-                    double margin = Math.min(Math.max(o.marginMin, o.marginGain * avgMag), o.marginMax);
-                    double target = bit == 1 ? margin : -margin;
-                    if (bit == 1 && d >= target) continue;
-                    if (bit == 0 && d <= target) continue;
-                    double delta = (target - d) / 2;
-                    coeffs[a[0]][a[1]] += delta;
-                    coeffs[bIdx[0]][bIdx[1]] -= delta;
+                // 3) 输出重建（块级）
+                for (int i = 0; i < blockSize; i++) {
+                    int py = by * blockSize + i;
+                    for (int j = 0; j < blockSize; j++) {
+                        int px = bx * blockSize + j;
+                        int idx = py * width + px;
+                        int bi = i * blockSize + j;
+                        int[] rgb = RacColor.reconstructRgb(
+                            (int) Math.round(rgbBlockR[bi]),
+                            (int) Math.round(rgbBlockG[bi]),
+                            (int) Math.round(rgbBlockB[bi]),
+                            grayBlock[bi]);
+                        out[idx * 4] = (byte) rgb[0];
+                        out[idx * 4 + 1] = (byte) rgb[1];
+                        out[idx * 4 + 2] = (byte) rgb[2];
+                        out[idx * 4 + 3] = (byte) 255;
+                    }
                 }
 
-                double[][] modulated = RacDct.idct2d(coeffs);
-                double mn = Double.POSITIVE_INFINITY;
-                double mx = Double.NEGATIVE_INFINITY;
-                for (int i = 0; i < blockSize; i++) {
-                    for (int j = 0; j < blockSize; j++) {
-                        double v = modulated[i][j];
-                        if (v < mn) mn = v;
-                        if (v > mx) mx = v;
-                    }
-                }
-                double shift = 0;
-                if (mx > 127) shift = 127 - mx;
-                else if (mn < -128) shift = -128 - mn;
-                for (int i = 0; i < blockSize; i++) {
-                    for (int j = 0; j < blockSize; j++) {
-                        gray[(by * blockSize + i) * width + (bx * blockSize + j)] = modulated[i][j] + shift + 128;
-                    }
-                }
+                if (reporter != null) reporter.step(blk * 2 + 1);
             }
-        }
-
-        byte[] out = new byte[width * height * 4];
-        for (int i = 0; i < width * height; i++) {
-            int[] rgb = RacColor.reconstructRgb(
-                (int) Math.round(rulerRgb[i * 3]),
-                (int) Math.round(rulerRgb[i * 3 + 1]),
-                (int) Math.round(rulerRgb[i * 3 + 2]),
-                gray[i]);
-            out[i * 4] = (byte) rgb[0];
-            out[i * 4 + 1] = (byte) rgb[1];
-            out[i * 4 + 2] = (byte) rgb[2];
-            out[i * 4 + 3] = (byte) 255;
-            if (reporter != null && i % width == width - 1) reporter.step(width);
         }
         return new ImageData(out, width, height);
     }
@@ -302,21 +324,26 @@ public final class RacCore {
         byte[] data = imageData.rgba;
         int width = imageData.width;
         int height = imageData.height;
-        double[] gray = RacColor.toLuma(data, width, height);
         int bw = width / RacConstants.BLOCK_SIZE;
         int bh = height / RacConstants.BLOCK_SIZE;
         int totalBlocks = bw * bh;
         if (totalBlocks == 0) return null;
 
+        // v1.9 分块流式：逐块计算 luma（块级 8x8），消除原版全图 gray(double WxH) 大数组，
+        // 提取结果与原版逐字节一致（luma 公式不变）。
         int pairCount = RacConstants.COEFFICIENT_PAIRS.length;
         int[] allDeltas = new int[totalBlocks * pairCount];
         int blockSize = RacConstants.BLOCK_SIZE;
+        double[][] block = new double[blockSize][blockSize];
         for (int by = 0; by < bh; by++) {
             for (int bx = 0; bx < bw; bx++) {
-                double[][] block = new double[blockSize][blockSize];
                 for (int i = 0; i < blockSize; i++) {
                     for (int j = 0; j < blockSize; j++) {
-                        block[i][j] = gray[(by * blockSize + i) * width + (bx * blockSize + j)] - 128;
+                        int idx = (by * blockSize + i) * width + (bx * blockSize + j);
+                        int r = data[idx * 4] & 0xff;
+                        int g = data[idx * 4 + 1] & 0xff;
+                        int b = data[idx * 4 + 2] & 0xff;
+                        block[i][j] = 0.299 * r + 0.587 * g + 0.114 * b - 128;
                     }
                 }
                 double[][] coeffs = RacDct.dct2d(block);

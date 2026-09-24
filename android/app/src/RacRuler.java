@@ -88,17 +88,40 @@ public final class RacRuler {
 
     /** 构建平滑亮度偏移场（width x height）。 */
     public static float[] buildRulerField(int coverW, int coverH, int width, int height) {
+        return bilinear(lattice(coverW, coverH), height, width);
+    }
+
+    /** 构建 GxG 格点场（分辨率无关，内存极小），供逐像素单点采样复用。
+     *  v1.9：新增，供分块流式嵌入按需采样标尺，避免整图 float 数组驻留。 */
+    public static double[] lattice(int coverW, int coverH) {
         byte[] bits = encodeRulerBits(coverW, coverH);
-        double[] lattice = new double[G * G];
+        double[] lat = new double[G * G];
         for (int k = 0; k < K; k++) {
             double sign = bits[k] != 0 ? 1 : -1;
             for (int r = 0; r < R; r++) {
                 int[] p = PAIRS[k * R + r];
-                lattice[p[1] * G + p[0]] += sign * D;
-                lattice[p[3] * G + p[2]] -= sign * D;
+                lat[p[1] * G + p[0]] += sign * D;
+                lat[p[3] * G + p[2]] -= sign * D;
             }
         }
-        return bilinear(lattice, height, width);
+        return lat;
+    }
+
+    /** 单点双线性采样：与 buildRulerField 的 bilinear 对同一 (x,y) 逐像素一致。 */
+    public static float sample(double[] lattice, int width, int height, int x, int y) {
+        double v = ((y + 0.5) * G) / height - 0.5;
+        int j0 = (int) Math.floor(v);
+        double t = v - j0;
+        int j0c = clampInt(j0, 0, G - 1);
+        int j1c = clampInt(j0 + 1, 0, G - 1);
+        double u = ((x + 0.5) * G) / width - 0.5;
+        int i0 = (int) Math.floor(u);
+        double s = u - i0;
+        int i0c = clampInt(i0, 0, G - 1);
+        int i1c = clampInt(i0 + 1, 0, G - 1);
+        double a = lattice[j0c * G + i0c] * (1 - s) + lattice[j0c * G + i1c] * s;
+        double b = lattice[j1c * G + i0c] * (1 - s) + lattice[j1c * G + i1c] * s;
+        return (float) (a * (1 - t) + b * t);
     }
 
     private static float[] bilinear(double[] lattice, int height, int width) {
