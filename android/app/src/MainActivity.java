@@ -44,11 +44,8 @@ import java.util.function.IntConsumer;
 /**
  * 图隐 — 原生隐写工作台（Material 风格）。
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
- * 图片区：上传框固定 4:3 长条显示，结果卡高度完全跟随图片宽高比自适应
+ * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
- * v2.0：
- *  - 上传图片框（封面 / 秘密图 / 隐写图）改为固定 4:3 长条比例：不再随图片尺寸撑高，图片完整居中显示在框内
- *  - 新增莫奈取色（Material You 动态壁纸取色）：Android 12+ 主色 / 强调色跟随系统壁纸主题，低版本回退默认蓝
  * v1.8：
  *  - 修复可用容量进度条 / 嵌入进度条「一整条蓝」：填充层改用 ClipDrawable 按进度裁剪，
  *    未嵌入时显示灰色轨道，嵌入后按占用率填充蓝色
@@ -265,14 +262,14 @@ public class MainActivity extends Activity {
         content.addView(panelEmbed, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 封面图（全宽大卡，固定 4:3 长条） ----
+        // ---- 封面图（全宽大卡，选图后高度跟随图片比例） ----
         coverBox = makeImageCard(card, primary, "封面图 · 宿主", "点击选择要藏秘密图的封面", v -> pick(PICK_COVER));
         coverLp = imgCardLp(0);
         panelEmbed.addView(coverBox, coverLp);
         coverBoxText = (View) coverBox.getTag(R.id.placeholder);
         coverBoxImg = (ImageView) coverBox.getTag(R.id.preview);
 
-        // ---- 秘密图（全宽大卡，固定 4:3 长条） ----
+        // ---- 秘密图（全宽大卡） ----
         secretBox = makeImageCard(card, primary, "秘密图 · 被隐藏", "点击选择要藏进封面的图片", v -> pick(PICK_SECRET));
         secretLp = imgCardLp(GAP);
         panelEmbed.addView(secretBox, secretLp);
@@ -505,7 +502,7 @@ public class MainActivity extends Activity {
         content.addView(panelExtract, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 隐写图（全宽大卡，固定 4:3 长条） ----
+        // ---- 隐写图（全宽大卡） ----
         stegoBox = makeImageCard(card, primary, "隐写图 · 要解密的图片", "点击选择需要解密的图片", v -> pick(PICK_STEGO));
         stegoLp = imgCardLp(0);
         panelExtract.addView(stegoBox, stegoLp);
@@ -614,7 +611,7 @@ public class MainActivity extends Activity {
 
     /* ================= UI 构建工具 ================= */
 
-    /** 图片选择大卡：全宽、固定 4:3 长条，选图后图片完整居中显示在框内（不高撑卡片）。 */
+    /** 图片选择大卡：全宽、统一占位高度，选图后高度跟随图片比例。 */
     private LinearLayout makeImageCard(int card, int primary, String title, String subTitle,
                                        View.OnClickListener l) {
         LinearLayout box = new LinearLayout(this);
@@ -627,6 +624,8 @@ public class MainActivity extends Activity {
         ImageView preview = new ImageView(this);
         preview.setScaleType(ImageView.ScaleType.FIT_CENTER);
         preview.setVisibility(View.GONE);
+        // 内缩留白：图片显示在卡片圆角内侧，不盖满卡片四角，避免"图片溢出/盖住卡片"的观感
+        preview.setPadding(dp(10), dp(8), dp(10), dp(10));
         box.addView(preview, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -1032,13 +1031,13 @@ public class MainActivity extends Activity {
         return et;
     }
 
-    /** 上传图片框固定 4:3 比例高度（内容区宽 = 屏宽 - 32dp，宽:高 = 4:3）。 */
+    /** 上传图片框初始占位高度：16:9 长条（内容区宽 = 屏宽 - 32dp，宽:高 = 16:9）。上传图片后卡片高度跟随图片比例。 */
     private int imgCardH() {
         int innerW = getResources().getDisplayMetrics().widthPixels - dp(32);
-        return (int) (innerW * 3f / 4f);
+        return (int) (innerW * 9f / 16f);
     }
 
-    /** 图片卡布局：全宽 + 固定 4:3 框条 + 垂直间距。 */
+    /** 图片卡布局：全宽 + 初始 16:9 占位高 + 垂直间距。 */
     private LinearLayout.LayoutParams imgCardLp(int top) {
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, imgCardH());
@@ -1327,7 +1326,8 @@ public class MainActivity extends Activity {
                         final Bitmap bmp = RacImages.imageDataToBitmap(enhanced);
                         runOnUiThread(() -> {
                             coverData = enhanced;
-                            showImageFixed(coverBoxImg, coverBoxText, bmp);
+                            fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
+                                    coverBox, coverLp, 0);
                             payloadBytes = 0;
                             updateCapacityMeter();
                         });
@@ -1338,12 +1338,14 @@ public class MainActivity extends Activity {
             } else if (requestCode == PICK_SECRET) {
                 secretData = RacImages.decodeUri(this, uri, RacImages.SECRET_MAX);
                 Bitmap bmp = RacImages.imageDataToBitmap(secretData);
-                showImageFixed(secretBoxImg, secretBoxText, bmp);
+                fitImage(secretBoxImg, secretBoxText, bmp, secretBox, secretLp, IMG_CARD_H,
+                        secretBox, secretLp, 0);
                 updateCapacityMeter();
             } else if (requestCode == PICK_STEGO) {
                 stegoData = RacImages.decodeUri(this, uri, 0);
                 Bitmap bmp = RacImages.imageDataToBitmap(stegoData);
-                showImageFixed(stegoBoxImg, stegoBoxText, bmp);
+                fitImage(stegoBoxImg, stegoBoxText, bmp, stegoBox, stegoLp, IMG_CARD_H,
+                        stegoBox, stegoLp, 0);
             }
         } catch (Exception e) {
             toast("读取图片失败：" + e.getMessage());
@@ -1361,7 +1363,8 @@ public class MainActivity extends Activity {
                 final Bitmap bmp = RacImages.imageDataToBitmap(enhanced);
                 runOnUiThread(() -> {
                     coverData = enhanced;
-                    showImageFixed(coverBoxImg, coverBoxText, bmp);
+                    fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
+                            coverBox, coverLp, 0);
                     payloadBytes = 0;
                     updateCapacityMeter();
                 });
