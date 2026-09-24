@@ -120,8 +120,40 @@ public final class RacCore {
         return repeated;
     }
 
+    /** 嵌入进度回调：frac 为 0..1。 */
+    public interface EmbedProgress {
+        void onProgress(float frac);
+    }
+
+    /** 进度节流：按 1% 步进上报，避免高频回调。 */
+    private static final class ProgressReporter {
+        private final EmbedProgress cb;
+        private final long total;
+        private long done;
+        private float last = -1f;
+
+        ProgressReporter(EmbedProgress cb, long total) {
+            this.cb = cb;
+            this.total = Math.max(1L, total);
+        }
+
+        void step(long n) {
+            done += n;
+            float f = (float) Math.min(1.0, (double) done / total);
+            if (f - last >= 0.01f || f >= 1f) {
+                last = f;
+                cb.onProgress(f);
+            }
+        }
+    }
+
     /** 把载荷嵌入封面图。 */
     public static ImageData embed(ImageData imageData, byte[] payload, Options options) {
+        return embed(imageData, payload, options, null);
+    }
+
+    /** 把载荷嵌入封面图，带进度回调（算法与无回调版本完全一致）。 */
+    public static ImageData embed(ImageData imageData, byte[] payload, Options options, EmbedProgress progress) {
         Options o = normalizeOptions(options);
         byte[] data = imageData.rgba;
         int width = imageData.width;
@@ -131,6 +163,9 @@ public final class RacCore {
         int totalSlots = bw * bh * o.ppb;
         int rmax = totalSlots / RacConstants.CODEWORD_BITS;
         if (rmax < 1) throw new IllegalArgumentException("cover image is too small to embed anything");
+        // 总工作量：像素标尺生成(width*height) + DCT 块嵌入(bw*bh) + 输出重建(width*height)
+        long totalWork = (long) width * height * 2 + (long) bw * bh;
+        ProgressReporter reporter = progress == null ? null : new ProgressReporter(progress, totalWork);
 
         int messageBytes = 255 - o.nsym;
         int maxCodewords = rmax / o.repeat;
@@ -169,12 +204,14 @@ public final class RacCore {
             rulerRgb[i * 3 + 1] = ng;
             rulerRgb[i * 3 + 2] = nb;
             gray[i] = 0.299 * nr + 0.587 * ng + 0.114 * nb;
+            if (reporter != null && i % width == width - 1) reporter.step(width);
         }
 
         double room = 255 - 2 * o.marginMin;
         int blockSize = RacConstants.BLOCK_SIZE;
         for (int by = 0; by < bh; by++) {
             for (int bx = 0; bx < bw; bx++) {
+                if (reporter != null) reporter.step(1);
                 int base = (by * bw + bx) * o.ppb;
                 boolean used = false;
                 for (int p = 0; p < o.ppb; p++) {
@@ -255,6 +292,7 @@ public final class RacCore {
             out[i * 4 + 1] = (byte) rgb[1];
             out[i * 4 + 2] = (byte) rgb[2];
             out[i * 4 + 3] = (byte) 255;
+            if (reporter != null && i % width == width - 1) reporter.step(width);
         }
         return new ImageData(out, width, height);
     }
