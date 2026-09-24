@@ -1,14 +1,16 @@
 # 云端构建 APK：任何 push 到 main（或手动触发）都会在 GitHub 上直接编译出可安装的 APK，
 # 并把 APK 自动发布到 GitHub Releases（tag = v版本号）。
 #
-# 签名说明：
-#   - 未配置 secrets 时，使用 Android debug keystore 自动签名（构建永远成功，可安装）。
-#   - 想要正式签名，请在仓库 Settings -> Secrets and variables -> Actions 配置：
-#       ANDROID_KEYSTORE_B64   = rac-hide.keystore 的 base64 内容（本地执行：
+# 签名说明（优先级从高到低）：
+#   1) 仓库 secrets 正式签名（推荐）：Settings -> Secrets and variables -> Actions 配置
+#        ANDROID_KEYSTORE_B64   = rac-hide.keystore 的 base64 内容（本地执行：
 #                                certutil -encode rac-hide.keystore keystore.b64 后取文件内容）
-#       ANDROID_KEYSTORE_PASS  = keystore 密码（本地为 rachide2026）
-#       ANDROID_KEYSTORE_ALIAS = keystore 别名（本地为 rachide）
+#        ANDROID_KEYSTORE_PASS  = keystore 密码（本地为 rachide2026）
+#        ANDROID_KEYSTORE_ALIAS = keystore 别名（本地为 rachide）
 #     secrets 只存在于 GitHub 设置里，不进仓库、不对外可见。
+#   2) 仓库内置固定发布 keystore（.github/keystore/tuyin-release.p12.b64，PKCS12）：
+#      所有 APK 使用同一把签名，保证升级安装不因签名变化失败。
+#   3) 兜底：临时 debug keystore（仅当以上都不可用时）。
 #
 # 更新日志：每次发版请更新仓库根 RELEASE_NOTES.md（按 "## v版本号" 分段），
 # Release 发布说明会自动截取对应版本的日志段落。
@@ -20,6 +22,7 @@ on:
     paths:
       - 'android/**'
       - '.github/workflows/build-apk.yml'
+      - '.github/keystore/**'
   workflow_dispatch:
 
 permissions:
@@ -102,12 +105,26 @@ jobs:
           VER=$(sed -n 's/.*versionName="\([^"]*\)".*/\1/p' android/app/AndroidManifest.xml | head -1)
           echo "VER=$VER" >> "$GITHUB_ENV"
 
-          # 7) 签名：优先仓库 secrets 正式签名；未配置则 debug keystore 兜底
+          # 7) 签名：secrets 正式签名优先；无 secrets 时用仓库内置固定 keystore（统一签名）；再兜底 debug
           if [ -n "$KEYSTORE_B64" ]; then
             echo "$KEYSTORE_B64" | base64 -d > build/keystore.jks
             "$BT/apksigner" sign --ks build/keystore.jks \
               --ks-pass env:KEYSTORE_PASS \
               --ks-key-alias "$KEYSTORE_ALIAS" \
+              --out "build/Tuyin-$VER.apk" build/app-aligned.apk 2>build/sign_err.txt \
+              || { echo "::error::SIGN_FAIL $(tr '\n' ' ' < build/sign_err.txt | head -c 2500)"; exit 1; }
+          elif [ -f .github/keystore/tuyin-release.p12.b64 ]; then
+            python3 - <<'PY'
+            import base64
+            with open('.github/keystore/tuyin-release.p12.b64') as f:
+                data = base64.b64decode(f.read().strip())
+            with open('build/tuyin-release.p12', 'wb') as f:
+                f.write(data)
+            PY
+            "$BT/apksigner" sign --ks build/tuyin-release.p12 \
+              --ks-type PKCS12 \
+              --ks-pass pass:tuyin2026 \
+              --ks-key-alias tuyin \
               --out "build/Tuyin-$VER.apk" build/app-aligned.apk 2>build/sign_err.txt \
               || { echo "::error::SIGN_FAIL $(tr '\n' ' ' < build/sign_err.txt | head -c 2500)"; exit 1; }
           else
