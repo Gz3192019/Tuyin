@@ -45,6 +45,11 @@ import java.util.function.IntConsumer;
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
  * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
+ * v1.6：
+ *  - 修复大封面增强（4096/自定义）OOM 闪退：封面增强改在后台线程执行；
+ *    解码按目标长边采样（不再全尺寸驻留）；缩放中间位图用后即回收；自定义放大加 24M 像素护栏；
+ *    嵌入/模拟/提取统一捕获 OutOfMemoryError 并给出可操作提示
+ *  - 修复可用容量进度条不可见：ProgressBar 补上真正的进度填充层（蓝色），占用率直观显示
  * v1.5：
  *  - 封面增强真生效：长边双向重采样（2048/2560/3072/4096/自定义），小封面放大后容量提升，恢复的隐藏图更清晰
  *  - 封面增强选项对齐原版下拉（不放大/2048/2560/3072/4096/自定义）
@@ -75,6 +80,9 @@ public class MainActivity extends Activity {
     private static final String[] QUALITY_LABELS = {
             "q100（无损）", "q90", "q80", "q70", "q60", "q50（很狠）", "q30" };
     private static final int[] QUALITY_VALUES = { 100, 90, 80, 70, 60, 50, 30 };
+
+    /** 封面增强放大护栏：目标总像素上限（≈4096×5850，约 96MB RGBA，避免超大位图 OOM）。 */
+    private static final long MAX_TARGET_PIXELS = 24_000_000L;
 
     // 状态
     private RacCore.ImageData coverData;
@@ -272,11 +280,18 @@ public class MainActivity extends Activity {
         capacityText.setTextSize(13);
         capacityText.setTypeface(null, Typeface.BOLD);
 
+        // 进度条：轨道层 + 蓝色进度填充层（ProgressBar 依赖 id=progress 的层裁剪绘制）
         capacityBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         GradientDrawable barTrack = new GradientDrawable();
         barTrack.setColor(translucent(R.color.tuyin_seg_bg, 210));
         barTrack.setCornerRadius(dp(4));
-        capacityBar.setProgressDrawable(barTrack);
+        GradientDrawable barFill = new GradientDrawable();
+        barFill.setColor(primary);
+        barFill.setCornerRadius(dp(4));
+        LayerDrawable barLayers = new LayerDrawable(new Drawable[] { barTrack, barFill });
+        barLayers.setId(0, android.R.id.background);
+        barLayers.setId(1, android.R.id.progress);
+        capacityBar.setProgressDrawable(barLayers);
         LinearLayout.LayoutParams barLp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(8));
         barLp.topMargin = dp(12);
@@ -1231,17 +1246,28 @@ public class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
-        Uri uri = data.getData();
+        final Uri uri = data.getData();
         try {
             if (requestCode == PICK_COVER) {
                 coverUri = uri;
-                coverData = RacImages.decodeUri(this, uri, 0);
-                coverData = enhanceCover(coverData);
-                Bitmap bmp = RacImages.imageDataToBitmap(coverData);
-                fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
-                        coverBox, coverLp, 0);
-                payloadBytes = 0;
-                updateCapacityMeter();
+                toast("正在处理封面…");
+                // 封面解码 + 增强在后台线程执行（大尺寸增强耗时且吃内存，避免主线程 ANR/OOM）
+                new Thread(() -> {
+                    try {
+                        RacCore.ImageData raw = RacImages.decodeUri(this, uri, enhanceDecodeLong());
+                        final RacCore.ImageData enhanced = enhanceCover(raw);
+                        final Bitmap bmp = RacImages.imageDataToBitmap(enhanced);
+                        runOnUiThread(() -> {
+                            coverData = enhanced;
+                            fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
+                                    coverBox, coverLp, 0);
+                            payloadBytes = 0;
+                            updateCapacityMeter();
+                        });
+                    } catch (Throwable e) {
+                        runOnUiThread(() -> toast("处理封面失败：" + friendlyError(e)));
+                    }
+                }).start();
             } else if (requestCode == PICK_SECRET) {
                 secretData = RacImages.decodeUri(this, uri, RacImages.SECRET_MAX);
                 Bitmap bmp = RacImages.imageDataToBitmap(secretData);
@@ -1259,20 +1285,32 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** 封面增强档位变化：按新档位重新处理封面。 */
+    /** 封面增强档位变化：按新档位重新处理封面（后台线程）。 */
     private void reapplyCover() {
         if (coverUri == null) return;
-        try {
-            coverData = RacImages.decodeUri(this, coverUri, 0);
-            coverData = enhanceCover(coverData);
-            Bitmap bmp = RacImages.imageDataToBitmap(coverData);
-            fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
-                    coverBox, coverLp, 0);
-            payloadBytes = 0;
-            updateCapacityMeter();
-        } catch (Exception e) {
-            toast("重新处理封面失败：" + e.getMessage());
-        }
+        toast("正在重新处理封面…");
+        new Thread(() -> {
+            try {
+                RacCore.ImageData raw = RacImages.decodeUri(this, coverUri, enhanceDecodeLong());
+                final RacCore.ImageData enhanced = enhanceCover(raw);
+                final Bitmap bmp = RacImages.imageDataToBitmap(enhanced);
+                runOnUiThread(() -> {
+                    coverData = enhanced;
+                    fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
+                            coverBox, coverLp, 0);
+                    payloadBytes = 0;
+                    updateCapacityMeter();
+                });
+            } catch (Throwable e) {
+                runOnUiThread(() -> toast("重新处理封面失败：" + friendlyError(e)));
+            }
+        }).start();
+    }
+
+    /** 封面解码目标长边：增强档位目标（不放大时用 MAX_LONG 上限），解码直接采样到该尺寸。 */
+    private int enhanceDecodeLong() {
+        int t = enhanceTargetLong();
+        return t > 0 ? t : RacImages.MAX_LONG;
     }
 
     /** 封面增强目标长边（0=不放大；-1=自定义值）。 */
@@ -1281,14 +1319,30 @@ public class MainActivity extends Activity {
         return v == -1 ? enhanceCustom : v;
     }
 
-    /** 封面增强：长边双向重采样到目标值（对齐 web decodeImageFile targetLong，放大/缩小均精确到目标长边）。 */
+    /** 封面增强：长边双向重采样到目标值（对齐 web decodeImageFile targetLong，放大/缩小均精确到目标长边）。
+     *  带 24M 像素护栏：目标总像素超限时等比收窄，防止超大位图 OOM。 */
     private RacCore.ImageData enhanceCover(RacCore.ImageData raw) {
         int target = enhanceTargetLong();
         if (target <= 0) return raw;
         double scale = (double) target / Math.max(raw.width, raw.height);
         int nw = Math.max(1, (int) Math.round(raw.width * scale));
         int nh = Math.max(1, (int) Math.round(raw.height * scale));
+        long px = (long) nw * nh;
+        if (px > MAX_TARGET_PIXELS) {
+            double s = Math.sqrt((double) MAX_TARGET_PIXELS / px);
+            nw = Math.max(1, (int) (nw * s));
+            nh = Math.max(1, (int) (nh * s));
+        }
+        if (nw == raw.width && nh == raw.height) return raw;
         return RacImages.resizeImageData(raw, nw, nh);
+    }
+
+    /** 错误信息人性化：OOM 给可操作提示，其他给原因。 */
+    private String friendlyError(Throwable e) {
+        if (e instanceof OutOfMemoryError) {
+            return "内存不足，请降低封面增强尺寸或画质档位";
+        }
+        return e.getMessage() != null ? e.getMessage() : e.toString();
     }
 
     private void updateCapacityMeter() {
@@ -1390,10 +1444,10 @@ public class MainActivity extends Activity {
                             + "，可保存隐写图、切“提取”验证或下滑“通道模拟”验证鲁棒性");
                     toast("嵌入完成");
                 });
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 runOnUiThread(() -> {
                     embedStatus.setTextColor(Color.parseColor("#E5484D"));
-                    embedStatus.setText("嵌入失败：" + e.getMessage());
+                    embedStatus.setText("嵌入失败：" + friendlyError(e));
                 });
             } finally {
                 runOnUiThread(() -> btnEmbed.setEnabled(true));
@@ -1428,6 +1482,8 @@ public class MainActivity extends Activity {
                     byte[] jpeg = baos.toByteArray();
                     Bitmap dec = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
                     img = RacImages.bitmapToImageData(dec);
+                    b.recycle();
+                    dec.recycle();
                 }
                 final RacCore.ImageData attacked = img;
                 final RacCore.ExtractResult res = extractAuto(attacked);
@@ -1457,10 +1513,10 @@ public class MainActivity extends Activity {
                         simStatus.setText("提取失败：载荷已超出纠错预算。试试更轻的通道或更稳健的工作点。");
                     }
                 });
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 runOnUiThread(() -> {
                     simStatus.setTextColor(Color.parseColor("#E5484D"));
-                    simStatus.setText("模拟失败：" + e.getMessage());
+                    simStatus.setText("模拟失败：" + friendlyError(e));
                 });
             } finally {
                 runOnUiThread(() -> btnSim.setEnabled(true));
@@ -1517,10 +1573,10 @@ public class MainActivity extends Activity {
                             + "，可保存到相册");
                     toast("提取成功");
                 });
-            } catch (Exception e) {
+            } catch (Throwable e) {
                 runOnUiThread(() -> {
                     extractStatus.setTextColor(Color.parseColor("#E5484D"));
-                    extractStatus.setText("提取失败：" + e.getMessage());
+                    extractStatus.setText("提取失败：" + friendlyError(e));
                 });
             } finally {
                 runOnUiThread(() -> btnExtract.setEnabled(true));
