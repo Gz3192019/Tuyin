@@ -69,8 +69,7 @@ public final class RacReedSolomon {
         return r;
     }
 
-    private static int[] polyScale(int[] p, int x) {
-        int[] r = new int[p.length];
+    private static int[] polyScale(int[] p, int x) {        int[] r = new int[p.length];
         for (int i = 0; i < p.length; i++) r[i] = gfMul(p[i], x);
         return r;
     }
