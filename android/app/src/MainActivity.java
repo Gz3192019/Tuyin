@@ -13,6 +13,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
+import android.graphics.drawable.ClipDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.LayerDrawable;
@@ -45,6 +46,9 @@ import java.util.function.IntConsumer;
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
  * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
+ * v1.8：
+ *  - 修复可用容量进度条 / 嵌入进度条「一整条蓝」：填充层改用 ClipDrawable 按进度裁剪，
+ *    未嵌入时显示灰色轨道，嵌入后按占用率填充蓝色
  * v1.7：
  *  - 新增「开始嵌入」处理进度条：大图嵌入耗时较长时，蓝色进度条 + 百分比实时反馈
  *  - 嵌入进度由 RacCore.embed 分阶段计权上报（标尺生成 → DCT 块嵌入 → 输出重建）
@@ -285,7 +289,9 @@ public class MainActivity extends Activity {
         capacityText.setTextSize(13);
         capacityText.setTypeface(null, Typeface.BOLD);
 
-        // 进度条：轨道层 + 蓝色进度填充层（ProgressBar 依赖 id=progress 的层裁剪绘制）
+        // 进度条：轨道层 + 蓝色进度填充层。
+        // 关键：填充层必须用 ClipDrawable 包裹（按 level 裁剪），
+        // 否则 ProgressBar 传进来的 setLevel 只存储不裁剪，进度层永远全宽绘制（表现为"蓝色一整条"）。
         capacityBar = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         GradientDrawable barTrack = new GradientDrawable();
         barTrack.setColor(translucent(R.color.tuyin_seg_bg, 210));
@@ -293,7 +299,8 @@ public class MainActivity extends Activity {
         GradientDrawable barFill = new GradientDrawable();
         barFill.setColor(primary);
         barFill.setCornerRadius(dp(4));
-        LayerDrawable barLayers = new LayerDrawable(new Drawable[] { barTrack, barFill });
+        LayerDrawable barLayers = new LayerDrawable(new Drawable[] { barTrack,
+                new ClipDrawable(barFill, Gravity.START, ClipDrawable.HORIZONTAL) });
         barLayers.setId(0, android.R.id.background);
         barLayers.setId(1, android.R.id.progress);
         capacityBar.setProgressDrawable(barLayers);
@@ -411,7 +418,8 @@ public class MainActivity extends Activity {
         GradientDrawable epFill = new GradientDrawable();
         epFill.setColor(primary);
         epFill.setCornerRadius(dp(4));
-        LayerDrawable epLayers = new LayerDrawable(new Drawable[] { epTrack, epFill });
+        LayerDrawable epLayers = new LayerDrawable(new Drawable[] { epTrack,
+                new ClipDrawable(epFill, Gravity.START, ClipDrawable.HORIZONTAL) });
         epLayers.setId(0, android.R.id.background);
         epLayers.setId(1, android.R.id.progress);
         embedProgress.setProgressDrawable(epLayers);
