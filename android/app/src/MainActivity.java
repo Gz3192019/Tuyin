@@ -2,10 +2,12 @@ package com.tuopzf.tuyin;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -35,11 +37,19 @@ import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.io.ByteArrayOutputStream;
+import java.util.function.IntConsumer;
+
 /**
  * 图隐 — 原生隐写工作台（Material 风格）。
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
  * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
+ * v1.4：
+ *  - 可用容量随画质滑条 / 自定义参数实时刷新
+ *  - 封面增强改为 Material 单选下拉并真实生效（重新按档位处理封面）
+ *  - 原图尺寸（可选）：只填一项会提示，生效时有明确反馈
+ *  - 新增「通道模拟 · 验证鲁棒性」：缩放 → JPEG 重压缩 → 再提取（对齐 web 端 sim 面板）
  */
 public class MainActivity extends Activity {
 
@@ -48,13 +58,31 @@ public class MainActivity extends Activity {
     private static final int PICK_STEGO = 102;
     private static final int REQ_WRITE = 200;
 
+    // 封面增强档位（对齐 web coverUpscale：0=不放大，其余=长边上限）
+    private static final String[] ENHANCE_LABELS = {
+            "不放大", "长边 ≤ 512", "长边 ≤ 768", "长边 ≤ 1024", "长边 ≤ 1280", "长边 ≤ 2048" };
+    private static final int[] ENHANCE_VALUES = { 0, 512, 768, 1024, 1280, 2048 };
+
+    // 通道模拟：缩放 / JPEG 质量档位（对齐 web simScale / simQuality）
+    private static final String[] SCALE_LABELS = {
+            "不缩放（100%）", "缩放 90%", "缩放 80%", "缩放 70%", "缩放 60%", "缩放 50%" };
+    private static final double[] SCALE_VALUES = { 1.0, 0.9, 0.8, 0.7, 0.6, 0.5 };
+    private static final String[] QUALITY_LABELS = {
+            "q100（无损）", "q90", "q80", "q70", "q60", "q50（很狠）", "q30" };
+    private static final int[] QUALITY_VALUES = { 100, 90, 80, 70, 60, 50, 30 };
+
     // 状态
     private RacCore.ImageData coverData;
     private RacCore.ImageData secretData;
     private RacCore.ImageData stegoData;
     private Bitmap extractedBitmap;
+    private Bitmap simRecoveredBitmap;
+    private Uri coverUri;
     private int payloadBytes;
     private int capacityBytes = 0;
+    private int enhanceIndex = 0;
+    private int scaleIndex = 0;
+    private int qualityIndex = 5;
 
     // UI
     private LinearLayout panelEmbed;
@@ -88,7 +116,7 @@ public class MainActivity extends Activity {
     private TextView extractStatus;
     private SeekBar tierSlider;
     private TextView tierName;
-    private Spinner enhanceSpinner;
+    private TextView enhanceSelect;
     private LinearLayout customRow;
     private SeekBar ppbBar;
     private TextView ppbVal;
@@ -104,6 +132,16 @@ public class MainActivity extends Activity {
     private TextView btnExtract;
     private TextView btnResetEmbed;
     private TextView btnResetExtract;
+    // 通道模拟
+    private TextView btnSim;
+    private TextView simStatus;
+    private TextView simScaleSel;
+    private TextView simQualitySel;
+    private LinearLayout simAttackedBox, simRecoveredBox;
+    private FrameLayout simAttackedArea, simRecoveredArea;
+    private LinearLayout.LayoutParams simAttackedAreaLp, simRecoveredAreaLp;
+    private ImageView simAttackedImg, simRecoveredImg;
+    private View simAttackedText, simRecoveredText;
 
     /** 卡片统一圆角（dp）。 */
     private static final int CARD_RADIUS = 16;
@@ -191,7 +229,7 @@ public class MainActivity extends Activity {
         // 顶部透明占位：把功能区顶到渐隐层下缘之下（初始不遮挡）
         View topSpacer = new View(this);
         content.addView(topSpacer, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(112)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(84)));
 
         // ================ 嵌入面板 ================
         panelEmbed = new LinearLayout(this);
@@ -217,12 +255,12 @@ public class MainActivity extends Activity {
         LinearLayout capCard = makeCard(card);
         panelEmbed.addView(capCard, cardLp(0));
 
-        LinearLayout capRow = makeTileRow(card, "容", "可用容量", "封面可隐藏的最大字节数");
+        LinearLayout capRow = makeTileRow(card, "容", "可用容量", "封面可隐藏的最大字节数，随参数实时更新");
         capCard.addView(capRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         capacityText = (TextView) capRow.getTag(R.id.trailing);
         capacityText.setTextColor(primary);
-        capacityText.setText("—");
+        capacityText.setText("0 B");
         capacityText.setTextSize(13);
         capacityText.setTypeface(null, Typeface.BOLD);
 
@@ -237,24 +275,24 @@ public class MainActivity extends Activity {
         barLp.leftMargin = dp(58);
         capCard.addView(capacityBar, barLp);
 
-        // ---- 封面增强卡（图标瓦片 + 双行文字 + 右侧下拉） ----
+        // ---- 封面增强卡（图标瓦片 + 双行文字 + 右侧 Material 单选下拉） ----
         LinearLayout enhanceCard = makeCard(card);
         panelEmbed.addView(enhanceCard, cardLp(GAP));
 
-        LinearLayout enhanceRow = makeTileRow(card, "增", "封面增强", "嵌入前是否压缩封面");
+        LinearLayout enhanceRow = makeTileRow(card, "增", "封面增强", "嵌入前把封面压缩到指定长边");
         enhanceCard.addView(enhanceRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        enhanceSpinner = new Spinner(this);
-        enhanceSpinner.setAdapter(new ArrayAdapter<>(this,
-                android.R.layout.simple_spinner_item,
-                new String[] { "不放大", "长边 ≤ 512", "长边 ≤ 768", "长边 ≤ 1024", "长边 ≤ 1280", "长边 ≤ 2048" }));
-        enhanceRow.addView(enhanceSpinner, new LinearLayout.LayoutParams(dp(118), dp(44)));
+        enhanceSelect = makeSelectField(ENHANCE_LABELS, 0, idx -> {
+            enhanceIndex = idx;
+            if (coverUri != null) reapplyCover();
+        });
+        enhanceRow.addView(enhanceSelect, new LinearLayout.LayoutParams(dp(124), dp(44)));
 
         // ---- 画质与容量卡（图标瓦片 + 双行文字 + 右侧档位 + 滑条） ----
         LinearLayout tierCard = makeCard(card);
         panelEmbed.addView(tierCard, cardLp(GAP));
 
-        LinearLayout tierRow = makeTileRow(card, "质", "画质与容量", "画质与可嵌入容量的平衡");
+        LinearLayout tierRow = makeTileRow(card, "质", "画质与容量", "画质与可嵌入容量的平衡，滑动即时重算容量");
         tierCard.addView(tierRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         tierName = (TextView) tierRow.getTag(R.id.trailing);
@@ -272,6 +310,7 @@ public class MainActivity extends Activity {
         tierSlider.setOnSeekBarChangeListener(new SimpleBar() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 updateTierName(progress);
+                updateCapacityMeter();
             }
         });
         updateTierName(50);
@@ -302,6 +341,7 @@ public class MainActivity extends Activity {
         customToggle.setOnClickListener(v -> {
             customRow.setVisibility(customRow.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
             customToggle.setText(customRow.getVisibility() == View.VISIBLE ? "收起参数" : "自定义参数");
+            updateCapacityMeter();
         });
 
         // ---- 开始嵌入（大按钮） ----
@@ -323,6 +363,7 @@ public class MainActivity extends Activity {
         embedStatus = new TextView(this);
         embedStatus.setTextColor(sub);
         embedStatus.setTextSize(12);
+        embedStatus.setGravity(Gravity.CENTER);
         panelEmbed.addView(embedStatus, wrapLp(0, Gravity.CENTER));
 
         // ---- 隐写结果（全宽大卡，嵌入后显示，高度跟随图片比例） ----
@@ -332,6 +373,56 @@ public class MainActivity extends Activity {
         stegoResultAreaLp = (LinearLayout.LayoutParams) stegoResultArea.getLayoutParams();
         stegoResultText = (View) stegoResultBox.getTag(R.id.placeholder);
         stegoResultImg = (ImageView) stegoResultBox.getTag(R.id.preview);
+
+        // ---- 通道模拟 · 验证鲁棒性（缩放 → JPEG 重压缩 → 再提取） ----
+        LinearLayout simCard = makeCard(card);
+        panelEmbed.addView(simCard, cardLp(GAP));
+
+        LinearLayout simRow = makeTileRow(card, "验", "通道模拟 · 验证鲁棒性",
+                "模拟真实平台链路：缩放 → JPEG 重压缩 → 再提取");
+        simCard.addView(simRow, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        simScaleSel = makeSelectField(SCALE_LABELS, 0, idx -> scaleIndex = idx);
+        simCard.addView(makeSelectRow("缩放", simScaleSel), wrapLp(10, Gravity.CENTER));
+
+        simQualitySel = makeSelectField(QUALITY_LABELS, 5, idx -> qualityIndex = idx);
+        simCard.addView(makeSelectRow("JPEG 重压缩质量", simQualitySel), wrapLp(8, Gravity.CENTER));
+
+        btnSim = primaryButton("模拟通道并提取", primary, card);
+        simCard.addView(btnSim, btnLp(14));
+        btnSim.setOnClickListener(v -> doSimulate());
+
+        simStatus = new TextView(this);
+        simStatus.setTextColor(sub);
+        simStatus.setTextSize(13);
+        simStatus.setGravity(Gravity.CENTER);
+        simCard.addView(simStatus, wrapLp(10, Gravity.CENTER));
+
+        // 传输后的图像（模拟后显示被通道处理过的隐写图）
+        simAttackedBox = makeResultCard(card, "传输后的图像", "模拟后在这里显示被通道处理过的图像");
+        panelEmbed.addView(simAttackedBox, cardLp(GAP));
+        simAttackedArea = (FrameLayout) simAttackedBox.getTag(R.id.imageArea);
+        simAttackedAreaLp = (LinearLayout.LayoutParams) simAttackedArea.getLayoutParams();
+        simAttackedText = (View) simAttackedBox.getTag(R.id.placeholder);
+        simAttackedImg = (ImageView) simAttackedBox.getTag(R.id.preview);
+
+        // 提取结果 · 恢复的秘密图
+        simRecoveredBox = makeResultCard(card, "提取结果 · 恢复的秘密图", "模拟提取成功后在这里显示");
+        panelEmbed.addView(simRecoveredBox, cardLp(GAP));
+        simRecoveredArea = (FrameLayout) simRecoveredBox.getTag(R.id.imageArea);
+        simRecoveredAreaLp = (LinearLayout.LayoutParams) simRecoveredArea.getLayoutParams();
+        simRecoveredText = (View) simRecoveredBox.getTag(R.id.placeholder);
+        simRecoveredImg = (ImageView) simRecoveredBox.getTag(R.id.preview);
+
+        TextView btnSaveSim = ghostButton("保存恢复图到相册", primary, card);
+        LinearLayout simSaveRow = new LinearLayout(this);
+        simSaveRow.setOrientation(LinearLayout.HORIZONTAL);
+        simSaveRow.setGravity(Gravity.CENTER);
+        panelEmbed.addView(simSaveRow, wrapLp(GAP, Gravity.CENTER));
+        LinearLayout.LayoutParams simSaveLp = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        simSaveRow.addView(btnSaveSim, simSaveLp);
+        btnSaveSim.setOnClickListener(v -> saveBitmap(simRecoveredBitmap, "tuyin-recovered", "image/png", 100));
 
         // ================ 提取面板 ================
         panelExtract = new LinearLayout(this);
@@ -351,7 +442,7 @@ public class MainActivity extends Activity {
         LinearLayout sizeCard = makeCard(card);
         panelExtract.addView(sizeCard, cardLp(GAP));
 
-        LinearLayout sizeRow = makeTileRow(card, "尺", "原图尺寸（可选）", "恢复被缩放的原图比例");
+        LinearLayout sizeRow = makeTileRow(card, "尺", "原图尺寸（可选）", "恢复被缩放的原图比例；留空则自动检测");
         sizeCard.addView(sizeRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -392,6 +483,7 @@ public class MainActivity extends Activity {
         extractStatus = new TextView(this);
         extractStatus.setTextColor(sub);
         extractStatus.setTextSize(12);
+        extractStatus.setGravity(Gravity.CENTER);
         panelExtract.addView(extractStatus, wrapLp(0, Gravity.CENTER));
 
         // ---- 提取结果（全宽大卡，提取后显示，高度跟随图片比例） ----
@@ -699,6 +791,50 @@ public class MainActivity extends Activity {
         };
     }
 
+    /** Material 单选下拉：TextView 显示当前值，点击弹出单选对话框（比系统 Spinner 美观统一）。 */
+    private TextView makeSelectField(String[] labels, int defIndex, IntConsumer onChange) {
+        TextView sel = new TextView(this);
+        sel.setText(labels[defIndex]);
+        sel.setTextColor(color(R.color.tuyin_primary));
+        sel.setTextSize(13);
+        sel.setTypeface(null, Typeface.BOLD);
+        sel.setGravity(Gravity.CENTER);
+        sel.setPadding(dp(12), 0, dp(12), 0);
+        sel.setBackground(rippleBg(14, translucent(R.color.tuyin_seg_bg, 210), 2));
+        sel.setClickable(true);
+        sel.setOnClickListener(v -> {
+            int cur = 0;
+            for (int i = 0; i < labels.length; i++) {
+                if (labels[i].equals(sel.getText().toString())) { cur = i; break; }
+            }
+            final int[] chosen = { cur };
+            new AlertDialog.Builder(this)
+                    .setTitle("请选择")
+                    .setSingleChoiceItems(labels, cur, (d, w) -> chosen[0] = w)
+                    .setPositiveButton("确定", (d, w) -> {
+                        sel.setText(labels[chosen[0]]);
+                        onChange.accept(chosen[0]);
+                    })
+                    .setNegativeButton("取消", null)
+                    .show();
+        });
+        return sel;
+    }
+
+    /** 选择行：左标签 + 右侧选择控件。 */
+    private LinearLayout makeSelectRow(String label, TextView sel) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView lab = new TextView(this);
+        lab.setText(label);
+        lab.setTextColor(color(R.color.tuyin_sub));
+        lab.setTextSize(13);
+        row.addView(lab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        row.addView(sel, new LinearLayout.LayoutParams(dp(150), dp(44)));
+        return row;
+    }
+
     private void addParamSlider(LinearLayout parent, String label, int min, int max,
                                 int def, String key) {
         LinearLayout row = new LinearLayout(this);
@@ -729,6 +865,9 @@ public class MainActivity extends Activity {
         bar.setOnSeekBarChangeListener(new SimpleBar() {
             @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
                 val.setText(String.valueOf(min + progress));
+                if (customRow != null && customRow.getVisibility() == View.VISIBLE) {
+                    updateCapacityMeter();
+                }
             }
         });
         if ("ppb".equals(key)) { ppbBar = bar; ppbVal = val; }
@@ -957,6 +1096,13 @@ public class MainActivity extends Activity {
         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show();
     }
 
+    /** 字节数人性化显示（对齐 web fmtKB）。 */
+    private String fmtKB(int bytes) {
+        if (bytes <= 0) return "0 B";
+        if (bytes < 1024) return "<1 KB";
+        return String.format(java.util.Locale.US, "%.1f KB", bytes / 1024.0);
+    }
+
     /* ================= 面板切换 ================= */
 
     private void switchPanel(boolean embed) {
@@ -1001,7 +1147,8 @@ public class MainActivity extends Activity {
         Uri uri = data.getData();
         try {
             if (requestCode == PICK_COVER) {
-                coverData = RacImages.decodeUri(this, uri, 0);
+                coverUri = uri;
+                coverData = RacImages.decodeUri(this, uri, enhanceTarget());
                 Bitmap bmp = RacImages.imageDataToBitmap(coverData);
                 fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
                         coverBox, coverLp, 0);
@@ -1024,15 +1171,34 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** 封面增强档位变化：按新档位重新处理封面。 */
+    private void reapplyCover() {
+        if (coverUri == null) return;
+        try {
+            coverData = RacImages.decodeUri(this, coverUri, enhanceTarget());
+            Bitmap bmp = RacImages.imageDataToBitmap(coverData);
+            fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
+                    coverBox, coverLp, 0);
+            payloadBytes = 0;
+            updateCapacityMeter();
+        } catch (Exception e) {
+            toast("重新处理封面失败：" + e.getMessage());
+        }
+    }
+
+    private int enhanceTarget() {
+        return ENHANCE_VALUES[enhanceIndex];
+    }
+
     private void updateCapacityMeter() {
         if (coverData == null) {
-            capacityText.setText("—");
+            capacityText.setText("0 B");
             capacityBar.setProgress(0);
             return;
         }
         RacCore.Options opts = currentOptions();
         capacityBytes = RacCore.capacityBytes(coverData.width, coverData.height, opts);
-        capacityText.setText(capacityBytes + " B");
+        capacityText.setText(fmtKB(capacityBytes));
         if (payloadBytes > 0 && capacityBytes > 0) {
             int pct = (int) Math.min(100, payloadBytes * 100 / capacityBytes);
             capacityBar.setProgress(pct);
@@ -1117,7 +1283,7 @@ public class MainActivity extends Activity {
                     updateCapacityMeter();
                     embedStatus.setTextColor(Color.parseColor("#0086FF"));
                     embedStatus.setText("嵌入完成 " + bmp.getWidth() + "×" + bmp.getHeight()
-                            + "，可保存隐写图或切换“提取”验证");
+                            + "，可保存隐写图、切“提取”验证或下滑“通道模拟”验证鲁棒性");
                     toast("嵌入完成");
                 });
             } catch (Exception e) {
@@ -1131,6 +1297,73 @@ public class MainActivity extends Activity {
         }).start();
     }
 
+    /* ================= 通道模拟：缩放 → JPEG 重压缩 → 再提取 ================= */
+
+    private void doSimulate() {
+        if (stegoData == null) {
+            toast("请先在“嵌入”页生成隐写图，或在“提取”页选择隐写图");
+            return;
+        }
+        btnSim.setEnabled(false);
+        simStatus.setTextColor(color(R.color.tuyin_sub));
+        simStatus.setText("模拟通道：缩放 → JPEG 重压缩 → 提取…");
+        new Thread(() -> {
+            try {
+                RacCore.ImageData img = stegoData;
+                double scale = SCALE_VALUES[scaleIndex];
+                if (scale < 1) {
+                    img = RacImages.resizeImageData(img,
+                            Math.max(8, (int) Math.round(img.width * scale)),
+                            Math.max(8, (int) Math.round(img.height * scale)));
+                }
+                int quality = QUALITY_VALUES[qualityIndex];
+                if (quality < 100) {
+                    Bitmap b = RacImages.imageDataToBitmap(img);
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    b.compress(Bitmap.CompressFormat.JPEG, quality, baos);
+                    byte[] jpeg = baos.toByteArray();
+                    Bitmap dec = BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+                    img = RacImages.bitmapToImageData(dec);
+                }
+                final RacCore.ImageData attacked = img;
+                final RacCore.ExtractResult res = extractAuto(attacked);
+                runOnUiThread(() -> {
+                    fitImage(simAttackedImg, simAttackedText, RacImages.imageDataToBitmap(attacked),
+                            simAttackedArea, simAttackedAreaLp, RESULT_AREA_H,
+                            simAttackedBox, simAttackedBox.getLayoutParams(), 36);
+                    if (res != null) {
+                        final Bitmap recRaw = BitmapFactory.decodeByteArray(res.jpeg, 0, res.jpeg.length);
+                        final Bitmap recBmp = RacImages.applyExifRotationBytes(res.jpeg, recRaw);
+                        simRecoveredBitmap = recBmp;
+                        fitImage(simRecoveredImg, simRecoveredText, recBmp,
+                                simRecoveredArea, simRecoveredAreaLp, RESULT_AREA_H,
+                                simRecoveredBox, simRecoveredBox.getLayoutParams(), 36);
+                        simStatus.setTextColor(Color.parseColor("#0086FF"));
+                        simStatus.setText("提取成功：秘密图完好恢复，扛住了这个通道。");
+                    } else {
+                        simRecoveredBitmap = null;
+                        simRecoveredImg.setImageBitmap(null);
+                        simRecoveredImg.setVisibility(View.GONE);
+                        simRecoveredText.setVisibility(View.VISIBLE);
+                        simRecoveredAreaLp.height = dp(RESULT_AREA_H);
+                        simRecoveredArea.requestLayout();
+                        simRecoveredBox.getLayoutParams().height = dp(RESULT_AREA_H) + dp(36);
+                        simRecoveredBox.requestLayout();
+                        simStatus.setTextColor(Color.parseColor("#E5484D"));
+                        simStatus.setText("提取失败：载荷已超出纠错预算。试试更轻的通道或更稳健的工作点。");
+                    }
+                });
+            } catch (Exception e) {
+                runOnUiThread(() -> {
+                    simStatus.setTextColor(Color.parseColor("#E5484D"));
+                    simStatus.setText("模拟失败：" + e.getMessage());
+                });
+            } finally {
+                runOnUiThread(() -> btnSim.setEnabled(true));
+            }
+        }).start();
+    }
+
     /* ================= 提取 ================= */
 
     private void doExtract() {
@@ -1138,25 +1371,28 @@ public class MainActivity extends Activity {
             toast("请先选择隐写图");
             return;
         }
-        btnExtract.setEnabled(false);
-        extractStatus.setTextColor(color(R.color.tuyin_sub));
-        extractStatus.setText("正在提取…");
         int manualW = parseDim(coverWInput);
         int manualH = parseDim(coverHInput);
+        if ((manualW >= 16) != (manualH >= 16)) {
+            toast("宽和高需同时填写，或都留空自动检测封面尺寸");
+            return;
+        }
+        final boolean manual = manualW >= 16 && manualH >= 16;
+        btnExtract.setEnabled(false);
+        extractStatus.setTextColor(color(R.color.tuyin_sub));
+        extractStatus.setText(manual
+                ? "正在提取（按 " + manualW + "×" + manualH + " 恢复）…"
+                : "正在提取（自动检测封面尺寸）…");
         new Thread(() -> {
             try {
                 RacCore.ImageData working = stegoData;
-                if (manualW >= 16 && manualH >= 16) {
+                RacCore.ExtractResult res;
+                if (manual) {
                     working = RacImages.resizeImageData(stegoData, manualW, manualH);
+                    res = RacCore.extract(working);
                 } else {
-                    byte[] rgb = toRgb(stegoData.rgba);
-                    int[] detected = RacRuler.detectRulerSize(rgb, stegoData.width, stegoData.height);
-                    if (detected != null
-                            && (detected[0] != stegoData.width || detected[1] != stegoData.height)) {
-                        working = RacImages.resizeImageData(stegoData, detected[0], detected[1]);
-                    }
+                    res = extractAuto(working);
                 }
-                RacCore.ExtractResult res = RacCore.extract(working);
                 if (res == null) {
                     runOnUiThread(() -> {
                         extractStatus.setTextColor(Color.parseColor("#E5484D"));
@@ -1164,7 +1400,7 @@ public class MainActivity extends Activity {
                     });
                     return;
                 }
-                final Bitmap bmpRaw = android.graphics.BitmapFactory.decodeByteArray(res.jpeg, 0, res.jpeg.length);
+                final Bitmap bmpRaw = BitmapFactory.decodeByteArray(res.jpeg, 0, res.jpeg.length);
                 final Bitmap bmp = RacImages.applyExifRotationBytes(res.jpeg, bmpRaw);
                 runOnUiThread(() -> {
                     extractedBitmap = bmp;
@@ -1173,6 +1409,7 @@ public class MainActivity extends Activity {
                             extractResultBox, extractResultBox.getLayoutParams(), 36);
                     extractStatus.setTextColor(Color.parseColor("#0086FF"));
                     extractStatus.setText("提取成功 " + bmp.getWidth() + "×" + bmp.getHeight()
+                            + (manual ? "（已按 " + manualW + "×" + manualH + " 恢复）" : "（已自动恢复封面尺寸）")
                             + "，可保存到相册");
                     toast("提取成功");
                 });
@@ -1185,6 +1422,17 @@ public class MainActivity extends Activity {
                 runOnUiThread(() -> btnExtract.setEnabled(true));
             }
         }).start();
+    }
+
+    /** 自动检测封面标尺并提取（对齐 web extractImage 无 manual 分支）。 */
+    private RacCore.ExtractResult extractAuto(RacCore.ImageData stego) {
+        RacCore.ImageData working = stego;
+        byte[] rgb = toRgb(stego.rgba);
+        int[] detected = RacRuler.detectRulerSize(rgb, stego.width, stego.height);
+        if (detected != null && (detected[0] != stego.width || detected[1] != stego.height)) {
+            working = RacImages.resizeImageData(stego, detected[0], detected[1]);
+        }
+        return RacCore.extract(working);
     }
 
     private byte[] toRgb(byte[] rgba) {
@@ -1207,15 +1455,7 @@ public class MainActivity extends Activity {
 
     /* ================= 保存 ================= */
 
-    private void saveBitmap(RacCore.ImageData imageData, String name, String mime, int quality) {
-        Bitmap bmp = null;
-        if (imageData != null) {
-            bmp = RacImages.imageDataToBitmap(imageData);
-        } else if (extractedBitmap != null) {
-            bmp = extractedBitmap;
-        } else if (stegoData != null) {
-            bmp = RacImages.imageDataToBitmap(stegoData);
-        }
+    private void saveBitmap(Bitmap bmp, String name, String mime, int quality) {
         if (bmp == null) {
             toast("还没有可保存的图片");
             return;
@@ -1229,6 +1469,18 @@ public class MainActivity extends Activity {
         toast(ok ? getString(R.string.saved_to_gallery) : getString(R.string.save_failed));
     }
 
+    private void saveBitmap(RacCore.ImageData imageData, String name, String mime, int quality) {
+        Bitmap bmp = null;
+        if (imageData != null) {
+            bmp = RacImages.imageDataToBitmap(imageData);
+        } else if (extractedBitmap != null) {
+            bmp = extractedBitmap;
+        } else if (stegoData != null) {
+            bmp = RacImages.imageDataToBitmap(stegoData);
+        }
+        saveBitmap(bmp, name, mime, quality);
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
@@ -1237,6 +1489,8 @@ public class MainActivity extends Activity {
                 RacImages.saveBitmapToGallery(this, extractedBitmap, "tuyin-extracted", "image/png", 100);
             } else if (stegoData != null) {
                 RacImages.saveBitmapToGallery(this, RacImages.imageDataToBitmap(stegoData), "tuyin-stego", "image/png", 100);
+            } else if (simRecoveredBitmap != null) {
+                RacImages.saveBitmapToGallery(this, simRecoveredBitmap, "tuyin-recovered", "image/png", 100);
             }
         } else {
             toast(getString(R.string.save_denied));
@@ -1249,6 +1503,7 @@ public class MainActivity extends Activity {
         coverData = null;
         secretData = null;
         stegoData = null;
+        coverUri = null;
         payloadBytes = 0;
         coverBoxImg.setImageBitmap(null);
         coverBoxImg.setVisibility(View.GONE);
@@ -1267,6 +1522,23 @@ public class MainActivity extends Activity {
         stegoResultArea.requestLayout();
         stegoResultBox.getLayoutParams().height = dp(RESULT_AREA_H) + dp(36);
         stegoResultBox.requestLayout();
+        // 通道模拟复位
+        simRecoveredBitmap = null;
+        simAttackedImg.setImageBitmap(null);
+        simAttackedImg.setVisibility(View.GONE);
+        simAttackedText.setVisibility(View.VISIBLE);
+        simAttackedAreaLp.height = dp(RESULT_AREA_H);
+        simAttackedArea.requestLayout();
+        simAttackedBox.getLayoutParams().height = dp(RESULT_AREA_H) + dp(36);
+        simAttackedBox.requestLayout();
+        simRecoveredImg.setImageBitmap(null);
+        simRecoveredImg.setVisibility(View.GONE);
+        simRecoveredText.setVisibility(View.VISIBLE);
+        simRecoveredAreaLp.height = dp(RESULT_AREA_H);
+        simRecoveredArea.requestLayout();
+        simRecoveredBox.getLayoutParams().height = dp(RESULT_AREA_H) + dp(36);
+        simRecoveredBox.requestLayout();
+        simStatus.setText("");
         updateCapacityMeter();
         embedStatus.setText("");
     }
