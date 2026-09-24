@@ -21,7 +21,9 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 
-/** 图片工具：解码/缩放/JPEG 阶梯压缩/相册保存（对齐 src/browser.js 语义）。 */
+/** 图片工具：解码/缩放/JPEG 阶梯压缩/相册保存（对齐 src/browser.js 语义）。
+ *  v1.6：解码改为按目标长边 2 的幂采样（避免全尺寸驻留），缩放/压缩中间位图及时回收，
+ *        显著降低大封面增强时的内存峰值（此前拉到 4096/自定义会 OOM 闪退）。 */
 public final class RacImages {
     /** 长边上限（对齐 JS capLongEdge）。 */
     public static final int MAX_LONG = 4096;
@@ -32,17 +34,32 @@ public final class RacImages {
 
     /* ---------------- 解码 ---------------- */
 
-    /** 解码 Uri 为 ImageData，可选按目标长边缩放；应用 EXIF 旋转。 */
+    /** 解码 Uri 为 ImageData，可选按目标长边缩放；先采样解码再精确缩放，应用 EXIF 旋转。
+     *  targetLong>0 时按目标长边上限采样解码（0 时用 MAX_LONG 上限）。 */
     public static RacCore.ImageData decodeUri(Context ctx, Uri uri, int targetLong) throws IOException {
-        Bitmap bitmap = decodeBitmap(ctx, uri);
-        if (bitmap == null) throw new IOException("无法解码图片");
-        Bitmap oriented = applyExifRotation(ctx, uri, bitmap);
-        return capLongEdge(oriented, targetLong > 0 ? targetLong : MAX_LONG);
+        int limit = targetLong > 0 ? targetLong : MAX_LONG;
+        Bitmap sampled = decodeBitmapSampled(ctx, uri, limit);
+        if (sampled == null) throw new IOException("无法解码图片");
+        Bitmap oriented = applyExifRotation(ctx, uri, sampled);
+        if (oriented != sampled) sampled.recycle();
+        return capLongEdge(oriented, limit);
     }
 
-    public static Bitmap decodeBitmap(Context ctx, Uri uri) throws IOException {
+    /** 按目标长边采样解码：先只读尺寸，2 的幂采样使解码后长边 ≈ 目标，避免全尺寸位图驻留。 */
+    public static Bitmap decodeBitmapSampled(Context ctx, Uri uri, int targetLong) throws IOException {
+        BitmapFactory.Options bounds = new BitmapFactory.Options();
+        bounds.inJustDecodeBounds = true;
+        try (InputStream is = ctx.getContentResolver().openInputStream(uri)) {
+            BitmapFactory.decodeStream(is, null, bounds);
+        }
+        int srcW = bounds.outWidth, srcH = bounds.outHeight;
+        if (srcW <= 0 || srcH <= 0) return null;
+        int sample = 1;
+        int longest = Math.max(srcW, srcH);
+        while (longest / (sample * 2) >= targetLong) sample *= 2;
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inPreferredConfig = Bitmap.Config.ARGB_8888;
+        opts.inSampleSize = sample;
         try (InputStream is = ctx.getContentResolver().openInputStream(uri)) {
             return BitmapFactory.decodeStream(is, null, opts);
         }
@@ -94,7 +111,7 @@ public final class RacImages {
         }
     }
 
-    /** 长边不超过 limit 的等比缩放（对齐 JS capLongEdge）。 */
+    /** 长边不超过 limit 的等比缩放（对齐 JS capLongEdge）；缩放后回收输入位图。 */
     public static RacCore.ImageData capLongEdge(Bitmap src, int limit) {
         int w = src.getWidth();
         int h = src.getHeight();
@@ -102,9 +119,13 @@ public final class RacImages {
             double scale = limit / (double) Math.max(w, h);
             int nw = Math.max(1, (int) Math.round(w * scale));
             int nh = Math.max(1, (int) Math.round(h * scale));
-            src = Bitmap.createScaledBitmap(src, nw, nh, true);
+            Bitmap scaled = Bitmap.createScaledBitmap(src, nw, nh, true);
+            src.recycle();
+            src = scaled;
         }
-        return bitmapToImageData(src);
+        RacCore.ImageData out = bitmapToImageData(src);
+        if (!src.isRecycled()) src.recycle();
+        return out;
     }
 
     public static RacCore.ImageData bitmapToImageData(Bitmap bitmap) {
@@ -137,11 +158,14 @@ public final class RacImages {
         return Bitmap.createBitmap(pixels, w, h, Bitmap.Config.ARGB_8888);
     }
 
-    /** 高质量重采样（对齐 JS resizeImageData）。 */
+    /** 高质量重采样（对齐 JS resizeImageData）；中间位图用后即回收。 */
     public static RacCore.ImageData resizeImageData(RacCore.ImageData img, int width, int height) {
         Bitmap src = imageDataToBitmap(img);
         Bitmap scaled = Bitmap.createScaledBitmap(src, width, height, true);
-        return bitmapToImageData(scaled);
+        src.recycle();
+        RacCore.ImageData out = bitmapToImageData(scaled);
+        scaled.recycle();
+        return out;
     }
 
     /* ---------------- 秘密图 JPEG 阶梯压缩（对齐 JS fitSecretJpeg） ---------------- */
@@ -167,33 +191,36 @@ public final class RacImages {
 
         Bitmap base = imageDataToBitmap(source);
         int[] qualities = { 80, 65, 50, 40, 32, 25 };
-
-        for (int i = 0; i < n; i++) {
-            int maxDim = dims[i];
-            int width = source.width;
-            int height = source.height;
-            if (Math.max(width, height) > maxDim) {
-                double scale = maxDim / (double) Math.max(width, height);
-                width = Math.max(1, (int) Math.round(width * scale));
-                height = Math.max(1, (int) Math.round(height * scale));
-            }
-            // 白底画布（对齐 JS fillStyle '#ffffff'，避免透明变黑）
-            Bitmap canvas = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            Canvas c = new Canvas(canvas);
-            c.drawColor(0xFFFFFFFF);
-            Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
-            c.drawBitmap(base, null, new android.graphics.Rect(0, 0, width, height), paint);
-
-            for (int quality : qualities) {
-                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                boolean ok = canvas.compress(Bitmap.CompressFormat.JPEG, quality, baos);
-                if (ok && baos.size() <= maxBytes) {
-                    return baos.toByteArray();
+        try {
+            for (int i = 0; i < n; i++) {
+                int maxDim = dims[i];
+                int width = source.width;
+                int height = source.height;
+                if (Math.max(width, height) > maxDim) {
+                    double scale = maxDim / (double) Math.max(width, height);
+                    width = Math.max(1, (int) Math.round(width * scale));
+                    height = Math.max(1, (int) Math.round(height * scale));
                 }
+                // 白底画布（对齐 JS fillStyle '#ffffff'，避免透明变黑）
+                Bitmap canvas = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                Canvas c = new Canvas(canvas);
+                c.drawColor(0xFFFFFFFF);
+                Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG);
+                c.drawBitmap(base, null, new android.graphics.Rect(0, 0, width, height), paint);
+
+                for (int quality : qualities) {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    boolean ok = canvas.compress(Bitmap.CompressFormat.JPEG, quality, baos);
+                    if (ok && baos.size() <= maxBytes) {
+                        return baos.toByteArray();
+                    }
+                }
+                canvas.recycle();
             }
-            canvas.recycle();
+            return null;
+        } finally {
+            base.recycle();
         }
-        return null;
     }
 
     /* ---------------- 保存到相册 ---------------- */
