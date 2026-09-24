@@ -45,9 +45,14 @@ import java.util.function.IntConsumer;
  * 卡片：图标瓦片 + 双行文字（标题/副标题）+ 右侧状态；
  * 图片区：上传/结果卡显示图片后，卡片高度完全跟随图片宽高比自适应
  * （FIT_CENTER 完整显示、无高度上限，与 web 端 width:100%; height:auto 一致），不裁切、不挤压。
+ * v1.5：
+ *  - 封面增强真生效：长边双向重采样（2048/2560/3072/4096/自定义），小封面放大后容量提升，恢复的隐藏图更清晰
+ *  - 封面增强选项对齐原版下拉（不放大/2048/2560/3072/4096/自定义）
+ *  - 可用容量卡补充「实际载荷 · 占用比例」，进度条直观显示占用率
+ *  - 提取页「原图尺寸」文案对齐原版（仅当空间标尺读取失败时用于手动恢复原始尺寸）
  * v1.4：
  *  - 可用容量随画质滑条 / 自定义参数实时刷新
- *  - 封面增强改为 Material 单选下拉并真实生效（重新按档位处理封面）
+ *  - 封面增强改为 Material 单选下拉并真实生效
  *  - 原图尺寸（可选）：只填一项会提示，生效时有明确反馈
  *  - 新增「通道模拟 · 验证鲁棒性」：缩放 → JPEG 重压缩 → 再提取（对齐 web 端 sim 面板）
  */
@@ -58,10 +63,10 @@ public class MainActivity extends Activity {
     private static final int PICK_STEGO = 102;
     private static final int REQ_WRITE = 200;
 
-    // 封面增强档位（对齐 web coverUpscale：0=不放大，其余=长边上限）
+    // 封面增强档位（对齐 web coverUpscale：0=不放大，其余=长边双向重采样目标；-1=自定义）
     private static final String[] ENHANCE_LABELS = {
-            "不放大", "长边 ≤ 512", "长边 ≤ 768", "长边 ≤ 1024", "长边 ≤ 1280", "长边 ≤ 2048" };
-    private static final int[] ENHANCE_VALUES = { 0, 512, 768, 1024, 1280, 2048 };
+            "不放大", "长边缩放到 2048", "长边缩放到 2560", "长边缩放到 3072", "长边缩放到 4096", "自定义" };
+    private static final int[] ENHANCE_VALUES = { 0, 2048, 2560, 3072, 4096, -1 };
 
     // 通道模拟：缩放 / JPEG 质量档位（对齐 web simScale / simQuality）
     private static final String[] SCALE_LABELS = {
@@ -81,6 +86,8 @@ public class MainActivity extends Activity {
     private int payloadBytes;
     private int capacityBytes = 0;
     private int enhanceIndex = 0;
+    private int enhancePrevIndex = 0;
+    private int enhanceCustom = 0;
     private int scaleIndex = 0;
     private int qualityIndex = 5;
 
@@ -112,11 +119,12 @@ public class MainActivity extends Activity {
     private View extractResultText;
     private TextView capacityText;
     private ProgressBar capacityBar;
+    private TextView payloadInfo;
     private TextView embedStatus;
     private TextView extractStatus;
     private SeekBar tierSlider;
     private TextView tierName;
-    private TextView enhanceSelect;
+    private Spinner enhanceSelect;
     private LinearLayout customRow;
     private SeekBar ppbBar;
     private TextView ppbVal;
@@ -275,18 +283,25 @@ public class MainActivity extends Activity {
         barLp.leftMargin = dp(58);
         capCard.addView(capacityBar, barLp);
 
-        // ---- 封面增强卡（图标瓦片 + 双行文字 + 右侧 Material 单选下拉） ----
+        payloadInfo = new TextView(this);
+        payloadInfo.setText("实际载荷：尚未嵌入");
+        payloadInfo.setTextColor(sub);
+        payloadInfo.setTextSize(12);
+        LinearLayout.LayoutParams payloadLp = new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+        payloadLp.topMargin = dp(8);
+        payloadLp.leftMargin = dp(58);
+        capCard.addView(payloadInfo, payloadLp);
+
+        // ---- 封面增强卡（图标瓦片 + 双行文字 + 右侧原版下拉） ----
         LinearLayout enhanceCard = makeCard(card);
         panelEmbed.addView(enhanceCard, cardLp(GAP));
 
-        LinearLayout enhanceRow = makeTileRow(card, "增", "封面增强", "嵌入前把封面压缩到指定长边");
+        LinearLayout enhanceRow = makeTileRow(card, "增", "封面增强", "把封面长边重采样到目标尺寸，放大可提升隐藏图清晰度");
         enhanceCard.addView(enhanceRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-        enhanceSelect = makeSelectField(ENHANCE_LABELS, 0, idx -> {
-            enhanceIndex = idx;
-            if (coverUri != null) reapplyCover();
-        });
-        enhanceRow.addView(enhanceSelect, new LinearLayout.LayoutParams(dp(124), dp(44)));
+        enhanceSelect = makeEnhanceSpinner(ENHANCE_LABELS, 0);
+        enhanceRow.addView(enhanceSelect, new LinearLayout.LayoutParams(dp(158), dp(44)));
 
         // ---- 画质与容量卡（图标瓦片 + 双行文字 + 右侧档位 + 滑条） ----
         LinearLayout tierCard = makeCard(card);
@@ -442,7 +457,7 @@ public class MainActivity extends Activity {
         LinearLayout sizeCard = makeCard(card);
         panelExtract.addView(sizeCard, cardLp(GAP));
 
-        LinearLayout sizeRow = makeTileRow(card, "尺", "原图尺寸（可选）", "恢复被缩放的原图比例；留空则自动检测");
+        LinearLayout sizeRow = makeTileRow(card, "尺", "原图尺寸（可选）", "仅当空间标尺读取失败时用于手动恢复原始尺寸");
         sizeCard.addView(sizeRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -821,6 +836,78 @@ public class MainActivity extends Activity {
         return sel;
     }
 
+    /** 封面增强下拉（对齐 web 原版 select：不放大/2048/2560/3072/4096/自定义）。 */
+    private Spinner makeEnhanceSpinner(String[] labels, int defIndex) {
+        Spinner sp = new Spinner(this);
+        ArrayAdapter<String> ad = new ArrayAdapter<String>(
+                this, android.R.layout.simple_spinner_dropdown_item,
+                java.util.Arrays.asList(labels)) {
+            @Override public android.view.View getView(int position, android.view.View convertView, android.view.ViewGroup parent) {
+                TextView tv = (TextView) super.getView(position, convertView, parent);
+                tv.setTextColor(color(R.color.tuyin_primary));
+                tv.setTextSize(13);
+                tv.setTypeface(null, Typeface.BOLD);
+                tv.setGravity(Gravity.CENTER);
+                tv.setSingleLine(true);
+                return tv;
+            }
+        };
+        sp.setAdapter(ad);
+        sp.setSelection(defIndex);
+        sp.setBackground(rippleBg(14, translucent(R.color.tuyin_seg_bg, 210), 2));
+        sp.setOnItemSelectedListener(new android.widget.AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(android.widget.AdapterView<?> parent, android.view.View view, int position, long id) {
+                if (position == enhanceIndex) return;
+                int prev = enhanceIndex;
+                enhanceIndex = position;
+                if (position == labels.length - 1) {
+                    enhancePrevIndex = prev;
+                    promptEnhanceCustom();
+                } else {
+                    enhancePrevIndex = position;
+                    if (coverUri != null) reapplyCover();
+                }
+            }
+            @Override public void onNothingSelected(android.widget.AdapterView<?> parent) { }
+        });
+        return sp;
+    }
+
+    /** 自定义封面长边输入（对齐 web coverCustomLong：64~8192）。 */
+    private void promptEnhanceCustom() {
+        final EditText input = new EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        input.setHint("64 ~ 8192");
+        if (enhanceCustom > 0) input.setText(String.valueOf(enhanceCustom));
+        new AlertDialog.Builder(this)
+                .setTitle("自定义封面长边")
+                .setView(input)
+                .setPositiveButton("确定", (d, w) -> {
+                    try {
+                        int v = Integer.parseInt(input.getText().toString().trim());
+                        if (v < 64) v = 64;
+                        if (v > 8192) v = 8192;
+                        enhanceCustom = v;
+                        enhancePrevIndex = enhanceIndex;
+                        android.widget.TextView selected = (android.widget.TextView) enhanceSelect.getSelectedView();
+                        if (selected != null) selected.setText("自定义 " + v);
+                        if (coverUri != null) reapplyCover();
+                    } catch (Exception e) {
+                        toast("请输入 64~8192 的数字");
+                        revertEnhanceSelect();
+                    }
+                })
+                .setNegativeButton("取消", (d, w) -> revertEnhanceSelect())
+                .setOnCancelListener(d -> revertEnhanceSelect())
+                .show();
+    }
+
+    /** 取消自定义时回退到上一个有效档位。 */
+    private void revertEnhanceSelect() {
+        enhanceIndex = enhancePrevIndex;
+        enhanceSelect.setSelection(enhancePrevIndex, true);
+    }
+
     /** 选择行：左标签 + 右侧选择控件。 */
     private LinearLayout makeSelectRow(String label, TextView sel) {
         LinearLayout row = new LinearLayout(this);
@@ -1148,7 +1235,8 @@ public class MainActivity extends Activity {
         try {
             if (requestCode == PICK_COVER) {
                 coverUri = uri;
-                coverData = RacImages.decodeUri(this, uri, enhanceTarget());
+                coverData = RacImages.decodeUri(this, uri, 0);
+                coverData = enhanceCover(coverData);
                 Bitmap bmp = RacImages.imageDataToBitmap(coverData);
                 fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
                         coverBox, coverLp, 0);
@@ -1175,7 +1263,8 @@ public class MainActivity extends Activity {
     private void reapplyCover() {
         if (coverUri == null) return;
         try {
-            coverData = RacImages.decodeUri(this, coverUri, enhanceTarget());
+            coverData = RacImages.decodeUri(this, coverUri, 0);
+            coverData = enhanceCover(coverData);
             Bitmap bmp = RacImages.imageDataToBitmap(coverData);
             fitImage(coverBoxImg, coverBoxText, bmp, coverBox, coverLp, IMG_CARD_H,
                     coverBox, coverLp, 0);
@@ -1186,24 +1275,39 @@ public class MainActivity extends Activity {
         }
     }
 
-    private int enhanceTarget() {
-        return ENHANCE_VALUES[enhanceIndex];
+    /** 封面增强目标长边（0=不放大；-1=自定义值）。 */
+    private int enhanceTargetLong() {
+        int v = ENHANCE_VALUES[enhanceIndex];
+        return v == -1 ? enhanceCustom : v;
+    }
+
+    /** 封面增强：长边双向重采样到目标值（对齐 web decodeImageFile targetLong，放大/缩小均精确到目标长边）。 */
+    private RacCore.ImageData enhanceCover(RacCore.ImageData raw) {
+        int target = enhanceTargetLong();
+        if (target <= 0) return raw;
+        double scale = (double) target / Math.max(raw.width, raw.height);
+        int nw = Math.max(1, (int) Math.round(raw.width * scale));
+        int nh = Math.max(1, (int) Math.round(raw.height * scale));
+        return RacImages.resizeImageData(raw, nw, nh);
     }
 
     private void updateCapacityMeter() {
         if (coverData == null) {
             capacityText.setText("0 B");
             capacityBar.setProgress(0);
+            payloadInfo.setText("实际载荷：尚未嵌入");
             return;
         }
         RacCore.Options opts = currentOptions();
         capacityBytes = RacCore.capacityBytes(coverData.width, coverData.height, opts);
-        capacityText.setText(fmtKB(capacityBytes));
+        capacityText.setText("≈ " + fmtKB(capacityBytes));
         if (payloadBytes > 0 && capacityBytes > 0) {
-            int pct = (int) Math.min(100, payloadBytes * 100 / capacityBytes);
+            int pct = (int) Math.min(100, Math.round(payloadBytes * 100.0 / capacityBytes));
             capacityBar.setProgress(pct);
+            payloadInfo.setText("实际载荷：" + fmtKB(payloadBytes) + " · 占用 " + pct + "%");
         } else {
             capacityBar.setProgress(0);
+            payloadInfo.setText("实际载荷：尚未嵌入");
         }
     }
 
