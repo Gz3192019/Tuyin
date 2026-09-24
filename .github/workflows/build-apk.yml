@@ -58,6 +58,10 @@ jobs:
           BT="$ANDROID_HOME/build-tools/34.0.0"
 
           rm -rf build && mkdir -p build/gen build/classes build/dex
+          # assets 目录兜底：仓库无 assets 时 aapt -A 不会因目录缺失报错
+          if [ ! -d android/app/assets ]; then
+            mkdir -p android/app/assets
+          fi
 
           # 1) 打包资源并生成 R.java（与本地 build_app.py 同一流程）
           "$AAPT" package -f \
