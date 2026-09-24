@@ -179,7 +179,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(headerOverlay, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(240)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -401,7 +401,7 @@ public class MainActivity extends Activity {
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setGravity(Gravity.CENTER);
         seg.setPadding(dp(6), dp(4), dp(6), dp(4));
-        seg.setBackground(shadowBg(32, translucent(R.color.tuyin_card, 204), 4));
+        seg.setBackground(glassBg(32, translucent(R.color.tuyin_card, 204)));
 
         tabEmbed = makeNavItem(R.drawable.ic_embed, R.string.tab_embed);
         tabExtract = makeNavItem(R.drawable.ic_extract, R.string.tab_extract);
@@ -414,7 +414,7 @@ public class MainActivity extends Activity {
         seg.addView(tabExtract, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // 液态玻璃容器：缩略模糊下层内容 + 胶囊（80% 透明、50% 模糊）
+        // 液态玻璃容器：缩略模糊下层内容 + 胶囊（80% 透明、50% 模糊、左上高光、无投影）
         BlurView blurWrap = new BlurView(this);
         blurWrap.setPadding(dp(3), dp(3), dp(3), dp(3));
         blurWrap.addView(seg, new FrameLayout.LayoutParams(
@@ -424,8 +424,9 @@ public class MainActivity extends Activity {
         segLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         segLp.bottomMargin = dp(22);
         root.addView(blurWrap, segLp);
-        // 滚动时刷新液态玻璃模糊
+        // 实时刷新液态玻璃模糊（滚动 + 布局变化）
         scroll.setOnScrollChangeListener((v, sx, sy, ox, oy) -> blurWrap.invalidate());
+        root.getViewTreeObserver().addOnGlobalLayoutListener(() -> blurWrap.invalidate());
 
         switchPanel(true);
 
@@ -874,9 +875,9 @@ public class MainActivity extends Activity {
         return g;
     }
 
-    /** 圆角背景（无阴影）。 */
+    /** 圆角投影背景。 */
     private Drawable shadowBg(int radiusDp, int fillColor, int depthDp) {
-        return shapeBg(radiusDp, fillColor);
+        return shadowWrap(shapeBg(radiusDp, fillColor), radiusDp, depthDp);
     }
 
     /** 圆角水波纹背景（Material ripple）。 */
@@ -884,18 +885,55 @@ public class MainActivity extends Activity {
         return rippleWrap(shapeBg(radiusDp, fillColor), radiusDp, depthDp);
     }
 
-    /** 圆角水波纹背景（Material ripple，无阴影层）。 */
-    private Drawable rippleWrap(GradientDrawable body, int radiusDp, int depthDp) {
-        GradientDrawable mask = shapeBg(radiusDp, Color.WHITE);
-        int primary = color(R.color.tuyin_primary);
-        return new RippleDrawable(
-                ColorStateList.valueOf(Color.argb(60, Color.red(primary), Color.green(primary), Color.blue(primary))),
-                body, mask);
+    /** 液态玻璃胶囊：半透明底 + 左上高光（无投影）。 */
+    private Drawable glassBg(int radiusDp, int fillColor) {
+        GradientDrawable body = shapeBg(radiusDp, fillColor);
+        GradientDrawable gloss = new GradientDrawable(
+                GradientDrawable.Orientation.TL_BR,
+                new int[] { Color.argb(55, 255, 255, 255), Color.argb(0, 255, 255, 255) });
+        gloss.setCornerRadius(dp(radiusDp));
+        return new LayerDrawable(new Drawable[] { body, gloss });
     }
 
-    /** 圆角背景（无阴影、无 ripple，用于不可点容器）。 */
+    /** 圆角水波纹背景（Material ripple + 轻投影）。 */
+    private Drawable rippleWrap(GradientDrawable body, int radiusDp, int depthDp) {
+        int d = dp(depthDp);
+        int[] alphas = { 2, 4, 6, 9 };
+        GradientDrawable mask = shapeBg(radiusDp, Color.WHITE);
+        int primary = color(R.color.tuyin_primary);
+        RippleDrawable ripple = new RippleDrawable(
+                ColorStateList.valueOf(Color.argb(60, Color.red(primary), Color.green(primary), Color.blue(primary))),
+                body, mask);
+        Drawable[] layers = new Drawable[5];
+        for (int i = 0; i < 4; i++) {
+            layers[i] = shapeBg(radiusDp, Color.argb(alphas[i], 0, 0, 0));
+        }
+        layers[4] = ripple;
+        LayerDrawable ld = new LayerDrawable(layers);
+        for (int i = 0; i < 4; i++) {
+            int inset = d * (3 - i) / 4;
+            ld.setLayerInset(i, 0, 0, inset, inset);
+        }
+        ld.setLayerInset(4, 0, 0, d, d);
+        return ld;
+    }
+
+    /** 圆角轻投影背景（无 ripple，用于不可点容器）。 */
     private Drawable shadowWrap(GradientDrawable body, int radiusDp, int depthDp) {
-        return body;
+        int d = dp(depthDp);
+        int[] alphas = { 2, 4, 6, 9 };
+        Drawable[] layers = new Drawable[5];
+        for (int i = 0; i < 4; i++) {
+            layers[i] = shapeBg(radiusDp, Color.argb(alphas[i], 0, 0, 0));
+        }
+        layers[4] = body;
+        LayerDrawable ld = new LayerDrawable(layers);
+        for (int i = 0; i < 4; i++) {
+            int inset = d * (3 - i) / 4;
+            ld.setLayerInset(i, 0, 0, inset, inset);
+        }
+        ld.setLayerInset(4, 0, 0, d, d);
+        return ld;
     }
 
     private void toast(String msg) {
