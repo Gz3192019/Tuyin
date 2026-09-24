@@ -4,4 +4,8 @@
     <item name="preview" type="id"/>
     <item name="navIcon" type="id"/>
     <item name="navLabel" type="id"/>
+    <item name="navPill" type="id"/>
+    <item name="navPillBg" type="id"/>
+    <item name="trailing" type="id"/>
+    <item name="imageArea" type="id"/>
 </resources>
