@@ -9,6 +9,9 @@
 #       ANDROID_KEYSTORE_PASS  = keystore 密码（本地为 rachide2026）
 #       ANDROID_KEYSTORE_ALIAS = keystore 别名（本地为 rachide）
 #     secrets 只存在于 GitHub 设置里，不进仓库、不对外可见。
+#
+# 更新日志：每次发版请更新仓库根 RELEASE_NOTES.md（按 "## v版本号" 分段），
+# Release 发布说明会自动截取对应版本的日志段落。
 name: Build APK
 
 on:
@@ -139,10 +142,18 @@ jobs:
           VER="${{ env.VER }}"
           TAG="v${VER}"
           APK="build/Tuyin-${VER}.apk"
-          NOTES="图隐 Tuyin v${VER} — RAC-Hide 图片隐写（原作者 tuoPzf）的 Android App 化版本。仅做安卓客户端封装与 UI 适配，隐写算法与原项目完全兼容，可互相解隐。本 APK 由 GitHub Actions 自动构建并发布。"
-          # 幂等：tag 已存在则只更新资产，不存在则创建 release
+          # 更新日志：从 RELEASE_NOTES.md 按 "## v<版本>" 截取对应段落；找不到则用默认文案
+          NOTES=""
+          if [ -f RELEASE_NOTES.md ]; then
+            NOTES="$(awk -v v="v${VER}" '$0 ~ "^## " v "([[:space:]]|$)" {p=1; next} p && /^## / {p=0} p {print}' RELEASE_NOTES.md)"
+          fi
+          if [ -z "$NOTES" ]; then
+            NOTES="图隐 Tuyin v${VER} — RAC-Hide 图片隐写（原作者 tuoPzf）的 Android App 化版本。仅做安卓客户端封装与 UI 适配，隐写算法与原项目完全兼容，可互相解隐。本 APK 由 GitHub Actions 自动构建并发布。"
+          fi
+          # 幂等：tag 已存在则只更新资产并刷新日志，不存在则创建 release
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$APK" --clobber
+            gh release edit "$TAG" --notes "$NOTES"
           else
             gh release create "$TAG" "$APK" \
               --title "图隐 Tuyin v${VER}" \
