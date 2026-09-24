@@ -6,7 +6,9 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.graphics.drawable.Drawable;
@@ -126,23 +128,29 @@ public class MainActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         root.setBackgroundColor(bg);
 
-        // ---------------- 纵向主栈 ----------------
-        LinearLayout stack = new LinearLayout(this);
-        stack.setOrientation(LinearLayout.VERTICAL);
-        root.addView(stack, new FrameLayout.LayoutParams(
+        // ---- 工作区（滚动区，置于最底层，从顶部开始） ----
+        ScrollView scroll = new ScrollView(this);
+        root.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        // ---- 顶部大标题 ----
-        LinearLayout header = new LinearLayout(this);
-        header.setOrientation(LinearLayout.VERTICAL);
-        header.setPadding(dp(20), dp(20), dp(20), dp(4));
-        stack.addView(header, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        // ---- 顶部渐隐覆盖层（自上而下由实渐透，滚动内容从下方透出） ----
+        FrameLayout headerOverlay = new FrameLayout(this);
+        int bgR = Color.red(bg), bgG = Color.green(bg), bgB = Color.blue(bg);
+        GradientDrawable fade = new GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                new int[] { bg, Color.argb(0, bgR, bgG, bgB) });
+        headerOverlay.setBackground(fade);
+
+        LinearLayout headerInner = new LinearLayout(this);
+        headerInner.setOrientation(LinearLayout.VERTICAL);
+        headerInner.setPadding(dp(20), dp(20), dp(20), dp(4));
+        headerOverlay.addView(headerInner, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP));
 
         LinearLayout titleRow = new LinearLayout(this);
         titleRow.setOrientation(LinearLayout.HORIZONTAL);
         titleRow.setGravity(Gravity.CENTER_VERTICAL);
-        header.addView(titleRow, new LinearLayout.LayoutParams(
+        headerInner.addView(titleRow, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         TextView title = new TextView(this);
@@ -167,13 +175,11 @@ public class MainActivity extends Activity {
         slogan.setText(R.string.home_slogan);
         slogan.setTextColor(sub);
         slogan.setTextSize(13);
-        header.addView(slogan, new LinearLayout.LayoutParams(
+        headerInner.addView(slogan, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // ---- 工作区 ----
-        ScrollView scroll = new ScrollView(this);
-        stack.addView(scroll, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
+        root.addView(headerOverlay, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(118)));
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -395,7 +401,7 @@ public class MainActivity extends Activity {
         seg.setOrientation(LinearLayout.HORIZONTAL);
         seg.setGravity(Gravity.CENTER);
         seg.setPadding(dp(6), dp(4), dp(6), dp(4));
-        seg.setBackground(shadowBg(32, translucent(R.color.tuyin_card, 250), 4));
+        seg.setBackground(shadowBg(32, translucent(R.color.tuyin_card, 204), 4));
 
         tabEmbed = makeNavItem(R.drawable.ic_embed, R.string.tab_embed);
         tabExtract = makeNavItem(R.drawable.ic_extract, R.string.tab_extract);
@@ -408,11 +414,18 @@ public class MainActivity extends Activity {
         seg.addView(tabExtract, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        // 液态玻璃容器：缩略模糊下层内容 + 胶囊（80% 透明、50% 模糊）
+        BlurView blurWrap = new BlurView(this);
+        blurWrap.setPadding(dp(3), dp(3), dp(3), dp(3));
+        blurWrap.addView(seg, new FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
         FrameLayout.LayoutParams segLp = new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
         segLp.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
         segLp.bottomMargin = dp(22);
-        root.addView(seg, segLp);
+        root.addView(blurWrap, segLp);
+        // 滚动时刷新液态玻璃模糊
+        scroll.setOnScrollChangeListener((v, sx, sy, ox, oy) -> blurWrap.invalidate());
 
         switchPanel(true);
 
@@ -811,6 +824,35 @@ public class MainActivity extends Activity {
         @Override public void onStopTrackingTouch(SeekBar seekBar) { }
     }
 
+    /** 液态玻璃模糊层：把下层滚动内容缩略采样后放大绘制，形成毛玻璃效果。 */
+    private final class BlurView extends FrameLayout {
+        private Bitmap small;
+        private final Paint blurPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+
+        BlurView(android.content.Context context) {
+            super(context);
+            setWillNotDraw(false);
+        }
+
+        @Override protected void onDraw(Canvas canvas) {
+            ViewGroup parent = (ViewGroup) getParent();
+            if (parent == null || parent.getChildCount() == 0) return;
+            View stack = parent.getChildAt(0);
+            int w = getWidth(), h = getHeight();
+            if (w <= 0 || h <= 0) return;
+            int sw = Math.max(1, w / 5), sh = Math.max(1, h / 5);
+            if (small == null || small.getWidth() != sw || small.getHeight() != sh) {
+                small = Bitmap.createBitmap(sw, sh, Bitmap.Config.ARGB_8888);
+            }
+            Canvas c = new Canvas(small);
+            c.translate(-getLeft() / 5f, -getTop() / 5f);
+            c.scale(1f / 5f, 1f / 5f);
+            stack.draw(c);
+            canvas.drawBitmap(small, null, new android.graphics.Rect(0, 0, w, h), blurPaint);
+            super.onDraw(canvas);
+        }
+    }
+
     private int dp(int v) {
         return (int) (v * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -845,7 +887,7 @@ public class MainActivity extends Activity {
     /** 圆角投影 + 水波纹。 */
     private Drawable rippleWrap(GradientDrawable body, int radiusDp, int depthDp) {
         int d = dp(depthDp);
-        int[] alphas = { 5, 9, 14, 20 };
+        int[] alphas = { 3, 6, 10, 15 };
         GradientDrawable mask = shapeBg(radiusDp, Color.WHITE);
         int primary = color(R.color.tuyin_primary);
         RippleDrawable ripple = new RippleDrawable(
@@ -868,7 +910,7 @@ public class MainActivity extends Activity {
     /** 圆角渐变投影（无 ripple，用于不可点容器）。 */
     private Drawable shadowWrap(GradientDrawable body, int radiusDp, int depthDp) {
         int d = dp(depthDp);
-        int[] alphas = { 5, 9, 14, 20 };
+        int[] alphas = { 3, 6, 10, 15 };
         Drawable[] layers = new Drawable[5];
         for (int i = 0; i < 4; i++) {
             layers[i] = shapeBg(radiusDp, Color.argb(alphas[i], 0, 0, 0));
