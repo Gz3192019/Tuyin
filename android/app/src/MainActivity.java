@@ -130,6 +130,7 @@ public class MainActivity extends Activity {
 
         // ---- 工作区（滚动区，置于最底层，从顶部开始） ----
         ScrollView scroll = new ScrollView(this);
+        scroll.setVerticalScrollBarEnabled(false);
         root.addView(scroll, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -179,7 +180,7 @@ public class MainActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         root.addView(headerOverlay, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(112)));
 
         LinearLayout content = new LinearLayout(this);
         content.setOrientation(LinearLayout.VERTICAL);
@@ -190,7 +191,7 @@ public class MainActivity extends Activity {
         // 顶部透明占位：把功能区顶到渐隐层下缘之下（初始不遮挡）
         View topSpacer = new View(this);
         content.addView(topSpacer, new LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(150)));
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(112)));
 
         // ================ 嵌入面板 ================
         panelEmbed = new LinearLayout(this);
