@@ -14,6 +14,8 @@
 #
 # 更新日志：每次发版请更新仓库根 RELEASE_NOTES.md（按 "## v版本号" 分段），
 # Release 发布说明会自动截取对应版本的日志段落。
+# 注意：RELEASE_NOTES.md 本身不在下方触发 paths 里，只改日志不会触发构建；
+# 请把日志与代码改动放在同一次 push（或手动 workflow_dispatch），构建才能读到新日志。
 name: Build APK
 
 on:
