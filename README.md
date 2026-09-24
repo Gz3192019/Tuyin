@@ -1,3 +1,18 @@
+<div align="center">
+
+# 图隐 Tuyin
+
+**RAC-Hide 图片隐写的 Android App 化版本** · *Android client for the robust image steganography by [tuoPzf](https://github.com/tuoPzf/rac-hide)*
+
+[![下载 APK](https://img.shields.io/badge/下载-APK-0086FF.svg)](https://github.com/Gz3192019/Tuyin/releases/latest)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+
+</div>
+
+> 本仓库 fork 自 [tuoPzf/rac-hide](https://github.com/tuoPzf/rac-hide)，**仅做安卓客户端封装与 UI 适配**，隐写算法与原项目完全兼容，两端可互相解隐。原作者的算法说明与文档保留在下方，完整项目结构见[原文](#rac-hide)。
+
+---
+
 # RAC-Hide
 
 **Robust Attribute Coding for images — hide one image inside another so it survives JPEG re-compression and proportional rescaling.**
@@ -54,13 +69,19 @@ verification** button after embedding.
 
 ## Android app — 图隐 (`android/`)
 
-A standalone Android app wrapping the workbench in a native MIUI X-style shell:
-native title bar, segmented 嵌入/提取 tabs and a rounded-card WebView workbench,
-plus a native 关于 (About) page carrying the app name **图隐** and version — a grouped list that
-pays tribute to the original author's GitHub. Storage permissions are declared for picking images and
-saving exported PNGs to the system gallery; the app never connects to the network.
+图隐 is a **pure native Android app** (no WebView) rebuilt from the workbench:
+native Material cards, segmented 嵌入 / 提取 tabs, capacity / quality controls,
+a MIUI X-inspired floating navigation with glass blur, and a native 关于 page
+carrying the app name **图隐** and version — paying tribute to the original
+author's GitHub. Storage permissions are declared for picking images and saving
+exported PNGs to the system gallery; the app never connects to the network.
 
-- Prebuilt APK: `Tuyin-1.0.apk` (repo root, ~78 KB, self-signed v2+v3).
+- **Download the latest APK from Releases**:
+  <https://github.com/Gz3192019/Tuyin/releases/latest>
+  (每发布一个版本，GitHub Actions 都会自动构建并发布到 Releases，tag 为 `v版本号`。)
+- 注意：云端自动构建的 APK 使用 debug keystore 签名；覆盖安装前请先卸载旧版，
+  如需正式签名请在仓库 `Settings → Secrets and variables → Actions` 配置
+  `ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASS / ANDROID_KEYSTORE_ALIAS`。
 - Build from source and install steps: see [`android/README.md`](android/README.md).
 
 ---
