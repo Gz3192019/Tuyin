@@ -90,12 +90,8 @@ jobs:
             $(find build/classes -name '*.class') 2>build/d8_err.txt \
             || { echo "::error::D8_FAIL $(tr '\n' ' ' < build/d8_err.txt | head -c 2500)"; exit 1; }
 
-          # 4) 把 classes.dex 追加进 APK（heredoc：PY 必须顶格）
-          python3 - <<'PY'
-import zipfile
-with zipfile.ZipFile('build/app-unsigned.apk', 'a', zipfile.ZIP_DEFLATED) as z:
-    z.write('build/dex/classes.dex', 'classes.dex')
-PY
+          # 4) 把 classes.dex 追加进 APK（python -c 单行，避免 heredoc 缩进问题）
+          python3 -c "import zipfile; zipfile.ZipFile('build/app-unsigned.apk','a',zipfile.ZIP_DEFLATED).write('build/dex/classes.dex','classes.dex')"
 
           # 5) zipalign 4 字节对齐
           "$BT/zipalign" -f 4 build/app-unsigned.apk build/app-aligned.apk 2>build/zip_err.txt \
@@ -114,13 +110,7 @@ PY
               --out "build/Tuyin-$VER.apk" build/app-aligned.apk 2>build/sign_err.txt \
               || { echo "::error::SIGN_FAIL $(tr '\n' ' ' < build/sign_err.txt | head -c 2500)"; exit 1; }
           elif [ -f .github/keystore/tuyin-release.p12.b64 ]; then
-            python3 - <<'PY'
-import base64
-with open('.github/keystore/tuyin-release.p12.b64') as f:
-    data = base64.b64decode(f.read().strip())
-with open('build/tuyin-release.p12', 'wb') as f:
-    f.write(data)
-PY
+            python3 -c "import base64,pathlib; pathlib.Path('build/tuyin-release.p12').write_bytes(base64.b64decode(pathlib.Path('.github/keystore/tuyin-release.p12.b64').read_text().strip()))"
             "$BT/apksigner" sign --ks build/tuyin-release.p12 \
               --ks-type PKCS12 \
               --ks-pass pass:tuyin2026 \
